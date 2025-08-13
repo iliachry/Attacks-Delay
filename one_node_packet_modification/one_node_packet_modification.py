@@ -25,6 +25,7 @@ def calculate_theoretic_delay(lambda_n, a):
             EW = 1 / (mu - Lambda_star_old)
         
         L = (a * lambda_a) / mu if a * lambda_a < Lambda_star_old else Lambda_star_old / mu
+        
         P_W_gt_T = np.exp(-T / EW) if EW != np.inf and EW > 0 else 1
         q = L + (1 - L) * P_W_gt_T
 
