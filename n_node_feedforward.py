@@ -53,58 +53,87 @@ def debug_stability(N, mu, lambda_arr, p, W):
 
 def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
     """
-    More robust solver for N-Node tandem network with improved convergence.
+    Fixed solver for N-Node tandem network with proper retransmission logic.
     """
     
     # Pre-check: rough stability estimate
-    rough_estimate = lambda_arr * (1.5 ** N)  # Exponential growth estimate
-    if rough_estimate >= mu * 0.8:
+    max_amplification = (1 / (1 - p)) ** N  # Maximum possible amplification
+    rough_estimate = lambda_arr * max_amplification
+    if rough_estimate >= mu * 0.8:  # Less restrictive pre-check
         print(f"Pre-check failed: estimated load {rough_estimate:.3f} too high for μ={mu}")
         return None, None, None
     
-    # Adaptive parameter adjustment
-    max_iterations = 200
-    tolerance = 1e-6
-    damping_factor = 0.5  # Slow down updates for stability
+    # Solver parameters
+    max_iterations = 500
+    tolerance = 1e-8
+    damping_factor = 0.3  # More conservative damping
     
-    Lambda_star = np.full(N, lambda_arr)  # Better initial guess
+    # Initial guess: start with no retransmissions
+    Lambda_star = np.full(N, lambda_arr * 1.1)
     
     for iteration in range(max_iterations):
         Lambda_star_old = Lambda_star.copy()
         
+        # Calculate service times for all nodes
+        T = np.zeros(N)
         for i in range(N):
-            # Calculate loss and timeout probabilities
-            L_i = p
-            
-            if Lambda_star[i] >= mu * 0.99:  # Safety margin
+            if Lambda_star[i] >= mu * 0.999:  # Stability check
                 return None, None, None
-            
-            T_i = 1 / (mu - Lambda_star[i])
-            P_timeout = 1 - np.exp(-W / T_i) if T_i > 0 else 1.0
-            
-            # Retransmission probability
-            q_i = L_i + (1 - L_i) * P_timeout
-            
-            if q_i >= 0.99:  # Near-certain retransmission
-                return None, None, None
-            
-            # Update traffic rates with damping
-            if i == 0:
-                new_lambda = lambda_arr / (1 - q_i)
-            else:
-                successful_from_prev = Lambda_star[i-1] * (1 - p) * (1 - P_timeout)
-                new_lambda = successful_from_prev / (1 - q_i)
-            
-            # Apply damping for stability
-            Lambda_star[i] = damping_factor * new_lambda + (1 - damping_factor) * Lambda_star[i]
+            T[i] = 1 / (mu - Lambda_star[i])
+        
+        # Calculate end-to-end delay (only matters for final timeout)
+        total_end_to_end_delay = np.sum(T)
+        
+        # Calculate probabilities
+        L = np.full(N, p)  # Loss probability at each node
+        # Timeout only applies to complete end-to-end journey
+        P_timeout_final = 1 - np.exp(-W / total_end_to_end_delay)
+        
+        # For intermediate nodes, only loss matters. For final node, both loss and timeout
+        Q = np.copy(L)  # Start with just loss probability
+        Q[-1] = L[-1] + (1 - L[-1]) * P_timeout_final  # Final node gets timeout too
+        
+        # Check for instability
+        if np.any(Q >= 0.999):
+            return None, None, None
+        
+        # Update traffic rates
+        # For tandem network with retransmissions from first node:
+        # - First node gets new arrivals + all retransmissions
+        # - Each subsequent node gets successful packets from previous node
+        
+        new_Lambda = np.zeros(N)
+        
+        # First node: new arrivals + retransmissions
+        total_retransmission_rate = 0
+        for j in range(N):
+            # Packets that fail at node j and get retransmitted
+            retransmission_rate = Lambda_star[j] * Q[j]
+            total_retransmission_rate += retransmission_rate
+        
+        new_Lambda[0] = lambda_arr + total_retransmission_rate
+        
+        # Subsequent nodes: successful packets from previous node
+        for i in range(1, N):
+            # Packets successfully leaving node i-1
+            successful_rate = Lambda_star[i-1] * (1 - Q[i-1])
+            new_Lambda[i] = successful_rate
+        
+        # Apply damping for stability
+        Lambda_star = damping_factor * new_Lambda + (1 - damping_factor) * Lambda_star
         
         # Check convergence
         if np.allclose(Lambda_star, Lambda_star_old, atol=tolerance):
             # Calculate final metrics
-            T = np.array([1/(mu - ls) for ls in Lambda_star])
-            L = np.full(N, p)
-            total_delay = np.sum(T)
-            return total_delay, Lambda_star[0], (L, T, Lambda_star)
+            T_final = np.array([1/(mu - ls) if ls < mu else np.inf for ls in Lambda_star])
+            L_final = np.full(N, p)
+            total_delay = np.sum(T_final)
+            
+            # Sanity check
+            if np.any(np.isinf(T_final)) or np.isinf(total_delay):
+                return None, None, None
+                
+            return total_delay, Lambda_star[0], (L_final, T_final, Lambda_star)
     
     print(f"No convergence after {max_iterations} iterations")
     return None, None, None
@@ -426,7 +455,7 @@ if __name__ == "__main__":
     
     # Example: Show detailed results for a specific case
     print(f"\nExample detailed results for N=3, μ={mu}, λ={lambda_arrival}, p={p_values[1]}, W={W}:")
-    avg_sojourn, avg_traffic, details = solve_tandem_network_theory(3, mu, lambda_arrival, p_values[1], W)
+    avg_sojourn, avg_traffic, details = solve_tandem_network_theory_robust(3, mu, lambda_arrival, p_values[1], W)
     
     if details is not None:
         L, T, Lambda_star = details
