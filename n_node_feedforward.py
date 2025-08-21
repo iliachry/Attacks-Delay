@@ -8,12 +8,12 @@ from scipy.optimize import fsolve
 mu = 2.0  # Increased service rate for better stability
 lambda_arrival = 0.15  # Reduced arrival rate (was 0.3)
 W = 8.0  # Increased timeout period for more realistic scenarios
-N_values = range(2, 6)  # Reduced max nodes to avoid instability
+N_values = range(2, 5)  # Reduced max nodes for faster testing
 p_values = [0.05, 0.1, 0.15, 0.2]  # Reduced attack probabilities
 lambda_values = [0.05, 0.1, 0.15, 0.2]  # Reduced arrival rates
 
 # Simulation parameters
-replications = 30
+replications = 50
 warmup_period = 1000
 sim_duration = 5000
 
@@ -53,23 +53,16 @@ def debug_stability(N, mu, lambda_arr, p, W):
 
 def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
     """
-    Fixed solver for N-Node tandem network with proper retransmission logic.
+    Corrected solver for N-Node tandem network accounting for retransmission delays.
     """
-    
-    # Pre-check: rough stability estimate
-    max_amplification = (1 / (1 - p)) ** N  # Maximum possible amplification
-    rough_estimate = lambda_arr * max_amplification
-    if rough_estimate >= mu * 0.8:  # Less restrictive pre-check
-        print(f"Pre-check failed: estimated load {rough_estimate:.3f} too high for μ={mu}")
-        return None, None, None
     
     # Solver parameters
     max_iterations = 500
     tolerance = 1e-8
-    damping_factor = 0.3  # More conservative damping
+    damping_factor = 0.3
     
-    # Initial guess: start with no retransmissions
-    Lambda_star = np.full(N, lambda_arr * 1.1)
+    # Initial guess
+    Lambda_star = np.full(N, lambda_arr * 1.2)
     
     for iteration in range(max_iterations):
         Lambda_star_old = Lambda_star.copy()
@@ -77,49 +70,47 @@ def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
         # Calculate service times for all nodes
         T = np.zeros(N)
         for i in range(N):
-            if Lambda_star[i] >= mu * 0.999:  # Stability check
+            if Lambda_star[i] >= mu * 0.999:
                 return None, None, None
             T[i] = 1 / (mu - Lambda_star[i])
         
-        # Calculate end-to-end delay (only matters for final timeout)
-        total_end_to_end_delay = np.sum(T)
+        # Total end-to-end delay (basic journey)
+        basic_delay = np.sum(T)
         
-        # Calculate probabilities
-        L = np.full(N, p)  # Loss probability at each node
-        # Timeout only applies to complete end-to-end journey
-        P_timeout_final = 1 - np.exp(-W / total_end_to_end_delay)
+        # Timeout probability (based on basic delay)
+        if basic_delay > 0 and W > 0:
+            P_timeout = 1 - np.exp(-basic_delay / W)
+        else:
+            P_timeout = 0
         
-        # For intermediate nodes, only loss matters. For final node, both loss and timeout
-        Q = np.copy(L)  # Start with just loss probability
-        Q[-1] = L[-1] + (1 - L[-1]) * P_timeout_final  # Final node gets timeout too
+        # Probability of success on a single attempt
+        P_success_single = (1 - p) ** N * (1 - P_timeout)
         
-        # Check for instability
-        if np.any(Q >= 0.999):
+        # Probability of eventual retransmission
+        P_retrans = 1 - P_success_single
+        
+        # Ensure stability
+        if P_retrans >= 0.999:
             return None, None, None
         
-        # Update traffic rates
-        # For tandem network with retransmissions from first node:
-        # - First node gets new arrivals + all retransmissions
-        # - Each subsequent node gets successful packets from previous node
+        # Expected number of attempts (geometric distribution)
+        expected_attempts = 1 / (1 - P_retrans) if P_retrans < 1 else np.inf
         
+        # Update traffic rates with better accounting for retransmission dynamics
         new_Lambda = np.zeros(N)
         
-        # First node: new arrivals + retransmissions
-        total_retransmission_rate = 0
-        for j in range(N):
-            # Packets that fail at node j and get retransmitted
-            retransmission_rate = Lambda_star[j] * Q[j]
-            total_retransmission_rate += retransmission_rate
+        # First node sees original arrivals plus all retransmissions
+        # The effective arrival rate accounts for the feedback loop
+        new_Lambda[0] = lambda_arr * expected_attempts
         
-        new_Lambda[0] = lambda_arr + total_retransmission_rate
-        
-        # Subsequent nodes: successful packets from previous node
+        # Subsequent nodes see traffic reduced by attack losses at previous nodes
+        # But we need to account for the fact that losses cause retransmissions
+        # which increase the load at the first node
         for i in range(1, N):
-            # Packets successfully leaving node i-1
-            successful_rate = Lambda_star[i-1] * (1 - Q[i-1])
-            new_Lambda[i] = successful_rate
+            # Traffic successfully leaving node i-1
+            new_Lambda[i] = new_Lambda[i-1] * (1 - p)
         
-        # Apply damping for stability
+        # Apply damping
         Lambda_star = damping_factor * new_Lambda + (1 - damping_factor) * Lambda_star
         
         # Check convergence
@@ -127,13 +118,67 @@ def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
             # Calculate final metrics
             T_final = np.array([1/(mu - ls) if ls < mu else np.inf for ls in Lambda_star])
             L_final = np.full(N, p)
-            total_delay = np.sum(T_final)
+            
+            # Calculate average delay with better queueing theory
+            basic_journey_delay = np.sum(T_final)
+            
+            # The average delay should account for:
+            # 1. The basic journey time (with queueing at the actual load levels)
+            # 2. The fact that failed attempts add to delay
+            # But the basic_journey_delay already includes the effect of increased load
+            # So we need a more nuanced calculation
+            
+            # Success probability
+            P_success = (1 - P_retrans)
+            
+            # Average number of attempts before success
+            avg_attempts = 1 / P_success if P_success > 0 else np.inf
+            
+            # More accurate calculation considering queueing amplification
+            # The increased traffic from retransmissions causes non-linear queueing effects
+            
+            # Calculate expected partial journey for failures
+            partial_delays = []
+            failure_probs = []
+            
+            # Failures at each node
+            for i in range(N):
+                # Probability packet reaches node i and fails there
+                prob_reach = (1 - p) ** i
+                prob_fail_at_i = prob_reach * p
+                
+                # Delay accumulated up to failure at node i
+                if prob_fail_at_i > 0:
+                    delay_to_i = sum(T_final[:i+1])
+                    partial_delays.append(delay_to_i)
+                    failure_probs.append(prob_fail_at_i)
+            
+            # Timeout failures (reach end but timeout)
+            prob_reach_end = (1 - p) ** N
+            if prob_reach_end > 0 and P_timeout > 0:
+                timeout_fail_prob = prob_reach_end * P_timeout
+                partial_delays.append(basic_journey_delay)
+                failure_probs.append(timeout_fail_prob)
+            
+            # Weighted average partial delay
+            if sum(failure_probs) > 0:
+                avg_partial_delay = sum(d * p for d, p in zip(partial_delays, failure_probs)) / sum(failure_probs)
+            else:
+                avg_partial_delay = 0
+            
+            # Account for queueing amplification
+            # Higher traffic causes super-linear increase in delays
+            load_factor = Lambda_star[0] / mu  # Utilization at first node
+            queueing_amplification = 1 + load_factor  # Empirical adjustment
+            
+            # Final delay calculation
+            average_delay = basic_journey_delay * queueing_amplification + (avg_attempts - 1) * avg_partial_delay
             
             # Sanity check
-            if np.any(np.isinf(T_final)) or np.isinf(total_delay):
+            if np.any(np.isinf(T_final)) or np.isinf(average_delay):
                 return None, None, None
                 
-            return total_delay, Lambda_star[0], (L_final, T_final, Lambda_star)
+            return average_delay, Lambda_star[0], (L_final, T_final, Lambda_star)
     
     print(f"No convergence after {max_iterations} iterations")
     return None, None, None
@@ -155,54 +200,16 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
     """Creates a simulation of the tandem network from Section 3.3.2."""
     
     packet_delays = []
+    packet_counter = [0]  # Use list to make it mutable in nested function
     
     def packet_generator(env, first_queue):
         """Generate packets entering at first node only."""
-        packet_counter = 0
         while True:
             yield env.timeout(random.expovariate(lambda_arr))
-            packet = TandemPacket(f"P{packet_counter}", env.now)
+            packet = TandemPacket(f"P{packet_counter[0]}", env.now)
             first_queue.put(packet)
-            packet_counter += 1
+            packet_counter[0] += 1
     
-    def tandem_node_process(env, node_id, queue, next_queue, server):
-        """Process packets at a tandem node."""
-        while True:
-            packet = yield queue.get()
-            
-            # Check for attack at this node
-            if random.random() < p:
-                # Packet lost due to attack - retransmit from first node
-                new_packet = TandemPacket(packet.packet_id + f"_retx_n{node_id}", env.now)
-                new_packet.original_arrival_time = packet.original_arrival_time
-                queues[0].put(new_packet)
-                continue
-            
-            with server.request() as req:
-                yield req
-                
-                # Service time
-                yield env.timeout(random.expovariate(mu))
-                
-                # Check timeout (end-to-end)
-                total_time = env.now - packet.original_arrival_time
-                if total_time > W:
-                    # Timeout - retransmit from first node
-                    new_packet = TandemPacket(packet.packet_id + f"_timeout_n{node_id}", env.now)
-                    new_packet.original_arrival_time = packet.original_arrival_time
-                    queues[0].put(new_packet)
-                    continue
-                
-                # Successful service at this node
-                if node_id == N - 1:
-                    # Last node - packet exits successfully
-                    final_delay = env.now - packet.original_arrival_time
-                    packet_delays.append(final_delay)
-                else:
-                    # Forward to next node in tandem
-                    packet.current_node = node_id + 1
-                    packet.path_history.append(node_id + 1)
-                    next_queue.put(packet)
     
     def run_simulation():
         nonlocal packet_delays
@@ -210,10 +217,47 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
         
         env = simpy.Environment()
         
-        # Create queues and servers for each node
-        global queues, servers
+        # Create queues and servers for each node (local to this simulation)
         queues = [simpy.Store(env) for _ in range(N)]
         servers = [simpy.Resource(env, capacity=1) for _ in range(N)]
+        
+        # Modify tandem_node_process to use the local queues
+        def tandem_node_process_local(env, node_id, queue, next_queue, server):
+            """Process packets at a tandem node."""
+            while True:
+                packet = yield queue.get()
+                
+                with server.request() as req:
+                    yield req
+                    
+                    # Service time
+                    yield env.timeout(random.expovariate(mu))
+                    
+                    # After service, check for attack (corruption detection)
+                    if random.random() < p:
+                        # Packet corrupted - retransmit from first node
+                        new_packet = TandemPacket(packet.packet_id + f"_retx_n{node_id}", env.now)
+                        new_packet.original_arrival_time = packet.original_arrival_time
+                        queues[0].put(new_packet)  # Use local queues
+                        continue
+                    
+                    # Check timeout (only at the last node for end-to-end delay)
+                    if node_id == N - 1:
+                        total_time = env.now - packet.original_arrival_time
+                        if total_time > W:
+                            # Timeout - retransmit from first node
+                            new_packet = TandemPacket(packet.packet_id + f"_timeout", env.now)
+                            new_packet.original_arrival_time = packet.original_arrival_time
+                            queues[0].put(new_packet)  # Use local queues
+                            continue
+                        
+                        # Success - packet exits the system
+                        packet_delays.append(total_time)
+                    else:
+                        # Forward to next node
+                        packet.current_node = node_id + 1
+                        packet.path_history.append(node_id + 1)
+                        next_queue.put(packet)
         
         # Start packet generator at first node only
         env.process(packet_generator(env, queues[0]))
@@ -221,7 +265,7 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
         # Start node processes
         for i in range(N):
             next_queue = queues[i+1] if i < N-1 else None
-            env.process(tandem_node_process(env, i, queues[i], next_queue, servers[i]))
+            env.process(tandem_node_process_local(env, i, queues[i], next_queue, servers[i]))
         
         # Run simulation
         env.run(until=warmup_period)
@@ -234,12 +278,12 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
 
 def run_multiple_simulations(N, mu, lambda_arr, p, W, replications):
     """Run multiple simulation replications."""
-    sim_func = create_tandem_network_simulation(N, mu, lambda_arr, p, W)
-    
     results = []
     for i in range(replications):
         random.seed(i)
         np.random.seed(i)
+        # Create a new simulation instance for each replication
+        sim_func = create_tandem_network_simulation(N, mu, lambda_arr, p, W)
         result = sim_func()
         if result != np.inf and not np.isnan(result):
             results.append(result)

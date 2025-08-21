@@ -14,8 +14,8 @@ lambda_values = [0.1, 0.2, 0.3, 0.4]  # Arrival rates to test
 
 # Simulation parameters
 replications = 30
-warmup_period = 1000
-sim_duration = 5000
+warmup_period = 2000
+sim_duration = 10000
 
 # --- THEORETICAL MODEL FOR SECTION 3.3.1 ---
 
@@ -116,57 +116,6 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
             queues[node_id].put(packet)
             packet_counter += 1
     
-    def node_process(env, node_id, queue, server):
-        """Process packets at a node with feedback routing."""
-        while True:
-            packet = yield queue.get()
-            
-            # Check for attack at this node
-            if random.random() < p:
-                # Packet lost due to attack - retransmit from entry node
-                new_packet = NetworkPacket(packet.packet_id + "_retx", packet.entry_node, env.now)
-                new_packet.original_arrival_time = packet.original_arrival_time
-                queues[packet.entry_node].put(new_packet)
-                continue
-            
-            with server.request() as req:
-                yield req
-                
-                # Service time
-                yield env.timeout(random.expovariate(mu))
-                
-                # Check timeout
-                total_time = env.now - packet.original_arrival_time
-                if total_time > W:
-                    # Timeout - retransmit from entry node
-                    new_packet = NetworkPacket(packet.packet_id + "_timeout", packet.entry_node, env.now)
-                    new_packet.original_arrival_time = packet.original_arrival_time
-                    queues[packet.entry_node].put(new_packet)
-                    continue
-                
-                # Routing decision (equiprobable)
-                rand_choice = random.random()
-                cumulative_prob = 0
-                
-                # Can go to any node (including feedback) or exit
-                transition_prob = 1 / (N + 1)
-                
-                destination = None
-                for next_node in range(N):
-                    cumulative_prob += transition_prob
-                    if rand_choice < cumulative_prob:
-                        destination = next_node
-                        break
-                
-                if destination is None:
-                    # Exit the network - success!
-                    final_delay = env.now - packet.original_arrival_time
-                    packet_delays.append(final_delay)
-                else:
-                    # Route to next node
-                    packet.current_node = destination
-                    packet.path_history.append(destination)
-                    queues[destination].put(packet)
     
     def run_simulation():
         nonlocal packet_delays
@@ -174,15 +123,77 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
         
         env = simpy.Environment()
         
-        # Create queues and servers for each node
-        global queues, servers
+        # Create queues and servers for each node (local to this simulation)
         queues = [simpy.Store(env) for _ in range(N)]
         servers = [simpy.Resource(env, capacity=1) for _ in range(N)]
         
+        # Local node process that uses local queues
+        def node_process_local(env, node_id, queue, server):
+            """Process packets at a node with feedback routing."""
+            while True:
+                packet = yield queue.get()
+                
+                # Check for attack at this node
+                if random.random() < p:
+                    # Packet lost due to attack - retransmit from entry node
+                    new_packet = NetworkPacket(packet.packet_id + "_retx", packet.entry_node, env.now)
+                    new_packet.original_arrival_time = packet.original_arrival_time
+                    queues[packet.entry_node].put(new_packet)  # Use local queues
+                    continue
+                
+                with server.request() as req:
+                    yield req
+                    
+                    # Service time
+                    yield env.timeout(random.expovariate(mu))
+                    
+                    # Check timeout
+                    total_time = env.now - packet.original_arrival_time
+                    if total_time > W:
+                        # Timeout - retransmit from entry node
+                        new_packet = NetworkPacket(packet.packet_id + "_timeout", packet.entry_node, env.now)
+                        new_packet.original_arrival_time = packet.original_arrival_time
+                        queues[packet.entry_node].put(new_packet)  # Use local queues
+                        continue
+                    
+                    # Routing decision (equiprobable)
+                    rand_choice = random.random()
+                    cumulative_prob = 0
+                    
+                    # Can go to any node (including feedback) or exit
+                    transition_prob = 1 / (N + 1)
+                    
+                    destination = None
+                    for next_node in range(N):
+                        cumulative_prob += transition_prob
+                        if rand_choice < cumulative_prob:
+                            destination = next_node
+                            break
+                    
+                    if destination is None:
+                        # Exit the network - success!
+                        final_delay = env.now - packet.original_arrival_time
+                        packet_delays.append(final_delay)
+                    else:
+                        # Route to next node
+                        packet.current_node = destination
+                        packet.path_history.append(destination)
+                        queues[destination].put(packet)  # Use local queues
+        
+        # Local packet generator that uses local queues
+        def packet_generator_local(env, node_id):
+            """Generate packets entering at node_id."""
+            packet_counter = 0
+            while True:
+                yield env.timeout(random.expovariate(lambda_arr))
+                packet = NetworkPacket(f"N{node_id}P{packet_counter}", node_id, env.now)
+                queues[node_id].put(packet)  # Use local queues
+                packet_counter += 1
+        
         # Start processes
         for i in range(N):
-            env.process(packet_generator(env, i))
-            env.process(node_process(env, i, queues[i], servers[i]))
+            env.process(packet_generator_local(env, i))
+            env.process(node_process_local(env, i, queues[i], servers[i]))
         
         # Run simulation
         env.run(until=warmup_period)
@@ -195,12 +206,12 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
 
 def run_multiple_simulations(N, mu, lambda_arr, p, W, replications):
     """Run multiple simulation replications."""
-    sim_func = create_feedback_network_simulation(N, mu, lambda_arr, p, W)
-    
     results = []
     for i in range(replications):
         random.seed(i)
         np.random.seed(i)
+        # Create a new simulation instance for each replication
+        sim_func = create_feedback_network_simulation(N, mu, lambda_arr, p, W)
         result = sim_func()
         if result != np.inf and not np.isnan(result):
             results.append(result)
