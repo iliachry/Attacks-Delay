@@ -1,0 +1,98 @@
+[
+    {
+        "N": 2,
+        "p": 0.05,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 3,
+        "p": 0.05,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 4,
+        "p": 0.05,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 5,
+        "p": 0.05,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 2,
+        "p": 0.1,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 3,
+        "p": 0.1,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 4,
+        "p": 0.1,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 5,
+        "p": 0.1,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 2,
+        "p": 0.15,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 3,
+        "p": 0.15,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 4,
+        "p": 0.15,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 5,
+        "p": 0.15,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 2,
+        "p": 0.2,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 3,
+        "p": 0.2,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 4,
+        "p": 0.2,
+        "theory": "inf",
+        "sim": "inf"
+    },
+    {
+        "N": 5,
+        "p": 0.2,
+        "theory": "inf",
+        "sim": "inf"
+    }
+]

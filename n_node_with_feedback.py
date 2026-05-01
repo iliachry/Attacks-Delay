@@ -1,15 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 import simpy
 import random
 from scipy.optimize import fsolve
 
 # --- MODEL PARAMETERS FOR SECTION 3.3.1 ---
-mu = 2.0  # Increased from 1.0
-lambda_arrival = 0.1  # Reduced from 0.2
-W = 1000.0  # Very large to avoid timeouts
-N_values = range(2, 6)  # Reduced range for faster testing
-p_values = [0.05, 0.1, 0.15, 0.2]  # Reduced probabilities
+mu = 1.0  # Service rate (identical for all nodes)
+lambda_arrival = 0.1  # Reduced arrival rate for stability
+W = 20.0  # Increased timeout period
+N_values = range(2, 6)  # Number of nodes to test
+p_values = [0.05, 0.1, 0.15, 0.2]  # Attack probabilities
 lambda_values = [0.1, 0.2, 0.3, 0.4]  # Arrival rates to test
 
 # Simulation parameters
@@ -156,6 +157,7 @@ class NetworkPacket:
         self.packet_id = packet_id
         self.entry_node = entry_node
         self.original_arrival_time = arrival_time
+        self.attempt_start_time = arrival_time  # New field for timeout checks
         self.current_node = entry_node
         self.path_history = [entry_node]
 
@@ -190,12 +192,11 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
             while True:
                 packet = yield queue.get()
                 
-                # Check for attack at this node
                 if random.random() < p:
                     # Packet lost due to attack - retransmit from entry node
                     new_packet = NetworkPacket(packet.packet_id + "_retx", packet.entry_node, env.now)
-                    # RESET arrival time for new attempt
-                    new_packet.original_arrival_time = env.now
+                    new_packet.original_arrival_time = packet.original_arrival_time
+                    new_packet.attempt_start_time = env.now # Timer resets for new attempt
                     queues[packet.entry_node].put(new_packet)
                     continue
                 
@@ -206,12 +207,12 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
                     yield env.timeout(random.expovariate(mu))
                     
                     # Check timeout
-                    total_time = env.now - packet.original_arrival_time
-                    if total_time > W:
+                    # Check timeout uses attempt_start_time
+                    if (env.now - packet.attempt_start_time) > W:
                         # Timeout - retransmit from entry node
                         new_packet = NetworkPacket(packet.packet_id + "_timeout", packet.entry_node, env.now)
-                        # RESET arrival time for new attempt
-                        new_packet.original_arrival_time = env.now
+                        new_packet.original_arrival_time = packet.original_arrival_time
+                        new_packet.attempt_start_time = env.now # Timer resets
                         queues[packet.entry_node].put(new_packet)
                         continue
                     
@@ -279,11 +280,17 @@ def run_multiple_simulations(N, mu, lambda_arr, p, W, replications):
 
 # --- EXECUTION AND PLOTTING ---
 
+    plt.grid(True)
+    plt.savefig('section_3_3_1_sojourn_vs_N_varying_p.png')
+    # plt.show()
+    return all_results
+
 def plot_sojourn_time_vs_N_varying_p():
     """Reproduce Figure 3.9: Average Sojourn time vs N, varying attack probability."""
     
     plt.figure(figsize=(12, 8))
     colors = ['b', 'g', 'r', 'purple']
+    all_results = []
     
     for idx, p in enumerate(p_values):
         theory_times = []
@@ -303,7 +310,14 @@ def plot_sojourn_time_vs_N_varying_p():
             else:
                 sim_times.append(np.inf)
             
-            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]):.4f}")
+            all_results.append({
+                "N": int(N),
+                "p": float(p),
+                "theory": float(theory_times[-1]) if theory_times[-1] != np.inf else "inf",
+                "sim": float(sim_times[-1]) if sim_times[-1] != np.inf else "inf"
+            })
+            
+            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]) if theory_times[-1] != np.inf and sim_times[-1] != np.inf else 0:.4f}")
         
         # Plot results
         plt.plot(N_values, theory_times, color=colors[idx], linestyle='-', 
@@ -317,7 +331,8 @@ def plot_sojourn_time_vs_N_varying_p():
     plt.legend()
     plt.grid(True)
     plt.savefig('section_3_3_1_sojourn_vs_N_varying_p.png')
-    plt.show()
+    # plt.show()
+    return all_results
 
 def plot_sojourn_time_vs_N_varying_lambda():
     """Reproduce Figure 3.10: Average Sojourn time vs N, varying arrival rate."""
@@ -411,13 +426,16 @@ if __name__ == "__main__":
     print("="*60)
     
     print("\nGenerating Figure 3.9: Average Sojourn Time vs N (Varying Attack Probability)...")
-    plot_sojourn_time_vs_N_varying_p()
+    results = plot_sojourn_time_vs_N_varying_p()
+    
+    with open('results_feedback.json', 'w') as f:
+        json.dump(results, f, indent=4)
     
     # plot_sojourn_time_vs_N_varying_lambda()
     
     # plot_traffic_rate_analysis()
     
-    print("\nInitial plot generated!")
+    print("\nInitial results saved to results_feedback.json!")
     
     # Example: Show detailed results for a specific case
     print(f"\nExample detailed results for N=5, μ={mu}, λ={lambda_arrival}, p={p_values[1]}, W={W}:")

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 import simpy
 import random
 from scipy.optimize import fsolve
@@ -166,6 +167,7 @@ class TandemPacket:
     def __init__(self, packet_id, arrival_time):
         self.packet_id = packet_id
         self.original_arrival_time = arrival_time
+        self.attempt_start_time = arrival_time  # New field for timeout checks
         self.current_node = 0
         self.path_history = [0]
 
@@ -206,27 +208,27 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
                     # Service time
                     yield env.timeout(random.expovariate(mu))
                     
-                    # After service, check for attack (corruption detection)
                     if random.random() < p:
                         # Packet corrupted - retransmit from first node
                         new_packet = TandemPacket(packet.packet_id + f"_retx_n{node_id}", env.now)
-                        # RESET arrival time for the new attempt
-                        new_packet.original_arrival_time = env.now 
+                        new_packet.original_arrival_time = packet.original_arrival_time
+                        new_packet.attempt_start_time = env.now # Timer resets for timeout
                         queues[0].put(new_packet)
                         continue
                     
                     # Check timeout (only at the last node for end-to-end delay)
                     if node_id == N - 1:
-                        total_time = env.now - packet.original_arrival_time
-                        if total_time > W:
+                        # Timeout check uses attempt_start_time
+                        if (env.now - packet.attempt_start_time) > W:
                             # Timeout - retransmit from first node
                             new_packet = TandemPacket(packet.packet_id + f"_timeout", env.now)
-                            # RESET arrival time for the new attempt
-                            new_packet.original_arrival_time = env.now
+                            new_packet.original_arrival_time = packet.original_arrival_time
+                            new_packet.attempt_start_time = env.now # Timer resets
                             queues[0].put(new_packet)
                             continue
                         
                         # Success - packet exits the system
+                        total_time = env.now - packet.original_arrival_time
                         packet_delays.append(total_time)
                     else:
                         # Forward to next node
@@ -267,11 +269,23 @@ def run_multiple_simulations(N, mu, lambda_arr, p, W, replications):
 
 # --- EXECUTION AND PLOTTING ---
 
+    plt.grid(True)
+    plt.ylim(bottom=0)  # Ensure positive y-axis
+    plt.savefig('section_3_3_2_tandem_delay_vs_N_varying_p.png', dpi=300, bbox_inches='tight')
+    # plt.show() # Disabled as per user request
+    
+    return {
+        "p_values": p_values,
+        "N_values": list(N_values),
+        "results": all_results
+    }
+
 def plot_sojourn_time_vs_N_varying_p():
     """Generate Figure for Section 3.3.2: Average Sojourn time vs N, varying attack probability."""
     
     plt.figure(figsize=(12, 8))
     colors = ['b', 'g', 'r', 'purple']
+    all_results = []
     
     for idx, p in enumerate(p_values):
         theory_times = []
@@ -285,6 +299,7 @@ def plot_sojourn_time_vs_N_varying_p():
                 print(f"  Skipping unstable case N={N}, p={p}")
                 theory_times.append(np.inf)
                 sim_times.append(np.inf)
+                all_results.append({"N": N, "p": p, "theory": "inf", "sim": "inf"})
                 continue
             
             # Theoretical calculation
@@ -298,7 +313,14 @@ def plot_sojourn_time_vs_N_varying_p():
             else:
                 sim_times.append(np.inf)
             
-            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]):.4f}")
+            all_results.append({
+                "N": int(N), 
+                "p": float(p), 
+                "theory": float(theory_times[-1]) if theory_times[-1] != np.inf else "inf", 
+                "sim": float(sim_times[-1]) if sim_times[-1] != np.inf else "inf"
+            })
+            
+            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]) if theory_times[-1] != np.inf and sim_times[-1] != np.inf else 0:.4f}")
         
         # Plot results (filter out infinite values for cleaner plots)
         valid_theory = [t if t != np.inf else None for t in theory_times]
@@ -316,7 +338,8 @@ def plot_sojourn_time_vs_N_varying_p():
     plt.grid(True)
     plt.ylim(bottom=0)  # Ensure positive y-axis
     plt.savefig('section_3_3_2_tandem_delay_vs_N_varying_p.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    # plt.show()
+    return all_results
 
 def plot_sojourn_time_vs_N_varying_lambda():
     """Generate Figure for Section 3.3.2: Average Sojourn time vs N, varying arrival rate."""
@@ -461,7 +484,10 @@ if __name__ == "__main__":
         debug_stability(*case)
     
     print("\nGenerating Average Delay vs N (Varying Attack Probability)...")
-    plot_sojourn_time_vs_N_varying_p()
+    results = plot_sojourn_time_vs_N_varying_p()
+    
+    with open('results_feedforward.json', 'w') as f:
+        json.dump(results, f, indent=4)
     
     # plot_sojourn_time_vs_N_varying_lambda()
     
@@ -469,7 +495,7 @@ if __name__ == "__main__":
     
     # plot_stability_regions()
     
-    print("\nInitial plot generated!")
+    print("\nInitial results saved to results_feedforward.json!")
     
     # Example: Show detailed results for a specific case
     print(f"\nExample detailed results for N=3, μ={mu}, λ={lambda_arrival}, p={p_values[1]}, W={W}:")
