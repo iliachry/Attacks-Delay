@@ -424,7 +424,7 @@ def plot_throughput_analysis():
     plt.title('Section 3.3.2: Tandem Network - Throughput vs N (Varying Attack Probability)')
     plt.legend()
     plt.grid(True)
-    plt.ylim(bottom=0)
+    #plt.ylim(bottom=0)
     plt.savefig('section_3_3_2_tandem_throughput_vs_N.png', dpi=300, bbox_inches='tight')
     plt.show()
 
