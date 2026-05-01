@@ -489,11 +489,11 @@ if __name__ == "__main__":
     with open('results_feedforward.json', 'w') as f:
         json.dump(results, f, indent=4)
     
-    # plot_sojourn_time_vs_N_varying_lambda()
+    plot_sojourn_time_vs_N_varying_lambda()
     
-    # plot_throughput_analysis()
+    plot_throughput_analysis()
     
-    # plot_stability_regions()
+    plot_stability_regions()
     
     print("\nInitial results saved to results_feedforward.json!")
     
