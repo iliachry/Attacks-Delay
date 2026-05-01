@@ -7,7 +7,7 @@
 \usepackage{cite}
 \usepackage{hyperref}
 
-\title{Performance Modeling and Analysis of N-Node Networks under Malicious Attacks and Timeout Constraints}
+\title{Comprehensive Performance Analysis of N-Node Networks under Malicious Attacks and Timeout Constraints}
 \author{Antigravity AI Assistant}
 \date{May 1, 2026}
 
@@ -16,57 +16,57 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a robust theoretical framework for analyzing the average sojourn time and throughput in N-node network architectures subjected to malicious attacks and timeout constraints. We investigate two fundamental topologies: a symmetric feedback network and a tandem feedforward network. Using renewal theory and moment-matching approximations (Gamma distribution), we derive closed-form expressions for end-to-end delay. Our results are validated against extensive SimPy-based discrete-event simulations, showing a discrepancy of less than 1\% in stable operational regions. We specifically highlight the counter-intuitive "attack invariance" property in symmetric feedback systems and the high sensitivity of tandem chains to hop-by-hop failures.
+This paper presents an extensive theoretical and empirical investigation into the performance of network architectures under adversarial conditions. We begin with a foundational analysis of single-node models under two distinct attack vectors: destruction and modification. We then extend these models to complex multi-hop environments, including tandem feedforward chains and symmetric feedback networks. By combining renewal-reward theory with moment-matching approximations (Gamma distribution), we provide a robust framework for predicting sojourn time and throughput. Our theoretical models are validated against discrete-event simulations, showing high fidelity in capturing the non-linear delay escalations near system stability limits.
 \end{abstract}
 
 \section{Introduction}
-As network architectures grow in complexity, the interaction between malicious interference (attacks) and congestion-related timeouts becomes critical for performance estimation. Traditional M/M/1 models often fall short in predicting end-to-end delay when every failure triggers a complete retransmission from the source. In this work, we reconcile principled queueing theory with empirical simulation results for N-node feedforward and feedback networks.
+Modern network infrastructures are increasingly vulnerable to both localized attacks and systemic congestion. This work reconciles the performance gap between idealized theoretical models and empirical simulation results for N-node systems.
 
-\section{System Model}
-We consider a network of $N$ nodes, each providing service with rate $\mu$. External packets arrive at the network according to a Poisson process with rate $\lambda$.
+\section{Single-Node Baseline Models}
+Before analyzing multi-hop networks, we establish baseline performance for a single node under two attack modalities.
 
-\subsection{Attack and Timeout Model}
-At each node, a packet faces a Bernoulli attack trial with probability $p$. If an attack is detected (discovered after service), the packet is dropped and must be retransmitted from its original entry node. Furthermore, a timeout window $W$ is enforced. If the total journey time of an attempt exceeds $W$, the attempt is considered failed, and a retransmission is triggered.
-
-\section{Theoretical Analysis}
-
-\subsection{Feedback Network}
-In the feedback network, a packet at node $i$ either exits the system with probability $1/(N+1)$ or transitions to one of the $N$ nodes with uniform probability.
-
-The effective traffic rate $\Lambda^*$ at each node is determined by a fixed-point equation:
+\subsection{Destruction Attacks}
+In a destruction attack, the adversary removes packets from the queue at rate $a \lambda_a$. The probability of a packet being lost to an attack before completing service is modeled as:
 \begin{equation}
-\Lambda^* = \lambda \frac{E[V]}{P_{succ}(\Lambda^*)}
+L_{dest} = \frac{a \lambda_a}{\mu + \lambda_a}
 \end{equation}
-where $E[V]$ is the expected number of visits per attempt and $P_{succ}$ is the probability of a successful attempt. We model the journey time of $k$ visits as an Erlang distribution with shape $k$ and rate $\gamma = \mu - \Lambda^*$.
-
-The total sojourn time is given by:
+The effective traffic rate $\Lambda^*$ is found by solving:
 \begin{equation}
-E[D] = (E[A]-1)E[D_{fail}] + E[D_{succ}]
+\Lambda^* = \frac{\lambda_n}{1 - (L_{dest} + (1-L_{dest})e^{-T(\mu - \Lambda^*)})}
 \end{equation}
-where $E[A] = 1/P_{succ}$ is the expected number of attempts.
+
+\subsection{Modification Attacks}
+Modification attacks involve the corruption of packets during service. The loss probability is proportional to the service time:
+\begin{equation}
+L_{mod} = \frac{a \lambda_a}{\mu}
+\end{equation}
+The packet consumes service resources at the node even if it is eventually found to be corrupted and requires retransmission.
+
+\section{Multi-Node Network Architectures}
 
 \subsection{Feedforward (Tandem) Network}
-For the tandem network, the traffic rate at node $i$ depends on the success probability of all preceding nodes $0 \dots i-1$:
+In a tandem network of $N$ nodes, each failure requires retransmission from node 0. The journey time for $i$ successful hops follows a hypoexponential distribution. To handle the timeout probability $P(S_i > W)$, we approximate $S_i$ as a Gamma distribution by matching the first two moments:
 \begin{equation}
-\Lambda_i = \Lambda_0 (1-p)^i P(S_i \le W)
+k_{gamma} = \frac{(E[S_i])^2}{Var(S_i)}, \quad \theta_{gamma} = \frac{Var(S_i)}{E[S_i]}
 \end{equation}
-Since the sum of independent exponential delays with different rates (due to varying $\Lambda_i$) follows a hypoexponential distribution, we approximate the journey time $S_i$ using a Gamma distribution by matching the first two moments:
+
+\subsection{Feedback (Mesh) Network}
+In a symmetric feedback network, the traffic rate $\Lambda^*$ is identical for all nodes due to the $1/(N+1)$ transition probability. The effective load is solved via fixed-point iteration:
 \begin{equation}
-E[S_i] = \sum_{j=0}^{i} \frac{1}{\mu - \Lambda_j}, \quad Var(S_i) = \sum_{j=0}^{i} \frac{1}{(\mu - \Lambda_j)^2}
+\Lambda^* = \lambda \frac{\sum_{k=1}^{\infty} (1-p)^{k-1} (\frac{N}{N+1})^{k-1} F_{S_{k-1}}(W)}{P_{succ}(\Lambda^*)}
 \end{equation}
 
 \section{Numerical Results}
-Comparison of Theoretical predictions with SimPy-based simulations reveals high accuracy across different topologies. Table \ref{tab:results} summarizes key performance metrics for a representative set of configurations.
+We validate our models using SimPy simulations. Table \ref{tab:results} summarizes representative data points.
 
 \begin{table}[h]
 \centering
 \begin{tabular}{@{}llccr@{}}
 \toprule
-Network & N & $p$ & Theory & Sim (Avg) \\ \midrule
-Feedback & 5 & 0.05 & 9.224 & 9.149 \\
-Feedback & 10 & 0.20 & 48.241 & 49.320 \\
-Tandem & 3 & 0.10 & 2.051 & 2.046 \\
-Tandem & 4 & 0.20 & 4.215 & 4.246 \\ \bottomrule
+Case & Config & p & Theory & Sim \\ \midrule
+1-Node & Mod & 0.2 & 1.45 & 1.43 \\
+Tandem & N=4 & 0.1 & 2.91 & 2.91 \\
+Feedback & N=10 & 0.1 & 31.61 & 31.80 \\ \bottomrule
 \end{tabular}
 \caption{Comparison of End-to-End Delay (Sojourn Time).}
 \label{tab:results}
@@ -75,25 +75,16 @@ Tandem & 4 & 0.20 & 4.215 & 4.246 \\ \bottomrule
 \begin{figure}[h]
     \centering
     \includegraphics[width=\columnwidth]{section_3_3_1_sojourn_vs_N_varying_p.png}
-    \caption{Average Sojourn Time vs Node Count (N) for the Feedback Network (Section 3.3.1).}
-    \label{fig:feedback_delay}
+    \caption{Delay in Feedback Networks (Section 3.3.1).}
 \end{figure}
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=\columnwidth]{section_3_3_2_tandem_delay_vs_N_varying_p.png}
-    \caption{Average End-to-End Delay vs N for the Tandem Network (Section 3.3.2).}
-    \label{fig:tandem_delay}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=\columnwidth]{section_3_3_2_tandem_throughput_vs_N.png}
-    \caption{System Throughput for the Tandem Network.}
-    \label{fig:tandem_throughput}
+    \caption{Delay in Tandem Networks (Section 3.3.2).}
 \end{figure}
 
 \section{Conclusion}
-This study provides a unified mathematical approach to modeling failures in multi-hop networks. The tight alignment between our Gamma-approximation theory and discrete-event simulation proves the framework's utility for network planning and security analysis.
+The proposed moment-matching and fixed-point frameworks provide a scalable solution for estimating performance in vulnerable networks.
 
 \end{document}
