@@ -18,34 +18,47 @@ sim_duration = 2000
 packet_delays = []
 
 # --- THEORETICAL MODEL (Unchanged) ---
-def calculate_theoretic_delay_final(lambda_n, a):
-    """Theoretical model for destruction attacks."""
-    Lambda_star_old = lambda_n
-    for _ in range(100):
-        if (a * lambda_a) < Lambda_star_old:
-            L = (a * lambda_a) / (mu + lambda_a)
-        else:
-            L = Lambda_star_old / (mu + lambda_a)
-
-        if Lambda_star_old >= mu:
-            EW = np.inf
-        else:
-            EW = 1 / (mu - Lambda_star_old)
-            
-        P_W_gt_T = np.exp(-T / EW) if EW != np.inf and EW > 0 else 1
-        q = L + (1 - L) * P_W_gt_T
-
-        if q >= 1:
-            Lambda_star_new = mu
-        else:
-            Lambda_star_new = lambda_n / (1 - q)
+def calculate_theoretic_delay_final(lambda_n, p):
+    """Robust fixed-point iteration for one-node delay with PRE-SERVICE destruction."""
+    Lambda_star = lambda_n
+    for _ in range(200):
+        if Lambda_star >= mu:
+            return np.inf
         
-        if np.isclose(Lambda_star_new, Lambda_star_old, atol=1e-6) or Lambda_star_new >= mu:
+        # M/M/1 delay for one attempt
+        # Traffic entering server is Lambda_star * (1 - p)
+        rho = (Lambda_star * (1 - p)) / mu
+        if rho >= 1:
+            return np.inf
+            
+        E_W = rho / (mu * (1 - rho)) # Expected waiting time in queue
+        E_S = 1 / mu # Service time
+        E_D_attempt = E_W + (1 - p) * E_S # Average delay of one attempt
+        
+        # Prob of success in one attempt: No attack and No timeout
+        # Success delay is W + S. CDF of W+S is harder, but for M/M/1 it is 1 - exp(- (mu-lambda) t)
+        # Here effective mu is mu, effective lambda is Lambda_star * (1-p)
+        gamma = mu - (Lambda_star * (1 - p))
+        P_succ = (1 - p) * (1 - np.exp(-gamma * T))
+        
+        if P_succ <= 0:
+            return np.inf
+            
+        # Expected number of attempts
+        E_A = 1 / P_succ
+        
+        # New effective traffic rate
+        Lambda_star_new = lambda_n * E_A
+        
+        if np.isclose(Lambda_star_new, Lambda_star, atol=1e-7):
             break
-        Lambda_star_old = Lambda_star_new
-
-    final_EW = 1 / (mu - Lambda_star_new) if Lambda_star_new < mu else np.inf
-    return final_EW
+        Lambda_star = Lambda_star_new
+        
+    if Lambda_star >= mu:
+        return np.inf
+        
+    # Total delay = E[A] * E[D_attempt]
+    return Lambda_star / lambda_n * E_D_attempt
 
 # --- CORRECTED SIMULATION MODEL ---
 
@@ -65,22 +78,7 @@ def packet_generator(env, queue, lambda_n):
         yield queue.put(packet)
         packet_id += 1
 
-def attacker(env, queue, lambda_a, a):
-    """Generates attacks that REMOVE packets from the queue (destruction)."""
-    while True:
-        yield env.timeout(random.expovariate(lambda_a))
-        if queue.items and random.random() < a:
-            # DESTRUCTION: Remove the packet entirely from the queue
-            target_packet = random.choice(queue.items)
-            queue.items.remove(target_packet)
-
-            # Create a new packet for retransmission (immediate)
-            retransmit_packet = Packet(target_packet.identifier + "_retx", env.now)
-            retransmit_packet.original_arrival_time = target_packet.original_arrival_time
-            retransmit_packet.current_arrival_time = target_packet.original_arrival_time
-            yield queue.put(retransmit_packet)
-
-def server_process(env, server, queue):
+def server_process(env, server, queue, p):
     """Models the server processing packets from the queue."""
     while True:
         packet = yield queue.get()
@@ -88,20 +86,26 @@ def server_process(env, server, queue):
         with server.request() as req:
             yield req
             
-            waiting_time = env.now - packet.current_arrival_time
+            # Start of attempt
+            packet.attempt_start_time = env.now
             
-            # Check timeout BEFORE service (destroyed packets never reach here)
-            if waiting_time > T:
-                # Timeout retransmission
+            # Pre-Service Attack check
+            if random.random() < p:
+                # Destruction: no service time consumed
                 packet.current_arrival_time = env.now
                 yield queue.put(packet)
             else:
-                # Serve the packet (only non-destroyed packets reach here)
-                yield env.timeout(random.expovariate(mu))  # Service time
+                # Service time consumed if not destroyed
+                yield env.timeout(random.expovariate(mu))
                 
-                # Success: record the total delay
-                total_delay = env.now - packet.original_arrival_time
-                packet_delays.append(total_delay)
+                # Check for timeout
+                if (env.now - packet.attempt_start_time) > T:
+                    packet.current_arrival_time = env.now
+                    yield queue.put(packet)
+                else:
+                    # Success
+                    total_delay = env.now - packet.original_arrival_time
+                    packet_delays.append(total_delay)
 
 def run_true_simulation(lambda_n, a):
     """Runs a single simulation instance for a given set of parameters."""
@@ -113,8 +117,7 @@ def run_true_simulation(lambda_n, a):
     server = simpy.Resource(env, capacity=1)
     
     env.process(packet_generator(env, packet_queue, lambda_n))
-    env.process(attacker(env, packet_queue, lambda_a, a))
-    env.process(server_process(env, server, packet_queue))
+    env.process(server_process(env, server, packet_queue, a))
     
     env.run(until=warmup_period)
     packet_delays = []

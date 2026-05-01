@@ -15,31 +15,40 @@ replications = 50
 warmup_period = 500
 sim_duration = 2000
 
-def calculate_theoretic_delay(lambda_n, a):
-    """Calculates the theoretical average delay based on the provided equations."""
-    Lambda_star_old = lambda_n
-    for _ in range(100):
-        if Lambda_star_old >= mu:
-            EW = np.inf
-        else:
-            EW = 1 / (mu - Lambda_star_old)
+def calculate_theoretic_delay(lambda_n, p):
+    """Robust fixed-point iteration for one-node delay with retransmissions."""
+    Lambda_star = lambda_n
+    for _ in range(200):
+        if Lambda_star >= mu:
+            return np.inf
         
-        L = (a * lambda_a) / mu if a * lambda_a < Lambda_star_old else Lambda_star_old / mu
+        # M/M/1 delay for one attempt
+        E_S = 1 / (mu - Lambda_star)
         
-        P_W_gt_T = np.exp(-T / EW) if EW != np.inf and EW > 0 else 1
-        q = L + (1 - L) * P_W_gt_T
-
-        if q >= 1:
-            Lambda_star_new = mu
-        else:
-            Lambda_star_new = lambda_n / (1 - q)
+        # Prob of success in one attempt: No attack and No timeout
+        # P(S <= W) = 1 - exp(-W / E_S)
+        P_succ = (1 - p) * (1 - np.exp(-T / E_S))
         
-        if np.isclose(Lambda_star_new, Lambda_star_old, atol=1e-6) or Lambda_star_new >= mu:
+        if P_succ <= 0:
+            return np.inf
+            
+        # Expected number of attempts
+        E_A = 1 / P_succ
+        
+        # New effective traffic rate
+        Lambda_star_new = lambda_n * E_A
+        
+        if np.isclose(Lambda_star_new, Lambda_star, atol=1e-7):
             break
-        Lambda_star_old = Lambda_star_new
-    
-    final_EW = 1 / (mu - Lambda_star_new) if Lambda_star_new < mu else np.inf
-    return final_EW
+        Lambda_star = Lambda_star_new
+        
+    if Lambda_star >= mu:
+        return np.inf
+        
+    # Renewal theory delay: (E[A]-1)*E[D_fail] + E[D_succ]
+    # Here E[D_fail] approx E[D_succ] approx E_S for simplicity in M/M/1
+    # Full formula: E[D] = E[A] * E_S
+    return E_A * (1 / (mu - Lambda_star))
 
 # --- SIMULATION MODEL ---
 
@@ -62,15 +71,7 @@ def packet_generator(env, queue, lambda_n):
         yield queue.put(packet)
         packet_id += 1
 
-def attacker(env, queue, lambda_a, a):
-    """Generates attacks that can corrupt packets in the queue."""
-    while True:
-        yield env.timeout(random.expovariate(lambda_a))
-        if queue.items and random.random() < a:
-            target_packet = random.choice(queue.items)
-            target_packet.corrupted = True
-
-def server_process(env, server, queue):
+def server_process(env, server, queue, p):
     """Models the server processing packets from the queue."""
     while True:
         packet = yield queue.get()
@@ -78,16 +79,19 @@ def server_process(env, server, queue):
         with server.request() as req:
             yield req
             
-            waiting_time = env.now - packet.current_arrival_time
+            # Start of attempt
+            packet.attempt_start_time = env.now
+            
+            # Discovery happens AFTER service
             yield env.timeout(random.expovariate(mu)) # Service time
             
-            if packet.corrupted or waiting_time > T:
-                # Retransmit if corrupted or timed out
-                packet.corrupted = False
+            # Check for attack or timeout
+            if random.random() < p or (env.now - packet.attempt_start_time) > T:
+                # Retransmit: put back in queue
                 packet.current_arrival_time = env.now
                 yield queue.put(packet)
             else:
-                # Success: record the total delay
+                # Success: record total end-to-end delay
                 total_delay = env.now - packet.original_arrival_time
                 packet_delays.append(total_delay)
 
@@ -101,8 +105,7 @@ def run_true_simulation(lambda_n, a):
     server = simpy.Resource(env, capacity=1)
     
     env.process(packet_generator(env, packet_queue, lambda_n))
-    env.process(attacker(env, packet_queue, lambda_a, a))
-    env.process(server_process(env, server, packet_queue))
+    env.process(server_process(env, server, packet_queue, a))
     
     env.run(until=warmup_period)
     packet_delays = []

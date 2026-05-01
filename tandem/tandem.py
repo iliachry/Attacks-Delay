@@ -2,187 +2,133 @@ import numpy as np
 import matplotlib.pyplot as plt
 import simpy
 import random
+import json
 
 # --- MODEL PARAMETERS ---
-mu = 10
-lambda_a = 1.5
-T = 2
-normal_traffic_rates = np.linspace(1, 5, 10)  # Match the working range
-attack_effectiveness_values = [0.2, 0.5, 0.8]  # Match the working values
+mu = 2.0
+lambda_arrival = 0.15
+W = 8.0
+N_tandem = 3
+p_values = [0.05, 0.1, 0.15, 0.2]
 
 # --- SIMULATION PARAMETERS ---
-replications = 50
-warmup_period = 500
-sim_duration = 2000
-
-packet_delays = []
-
-# --- THEORETICAL MODEL FOR DESTRUCTION ATTACKS ---
-def calculate_theoretic_delay_final(lambda_n, a):
-    """Theoretical model for destruction attacks - key difference in loss formula."""
-    Lambda_star_old = lambda_n
-    for _ in range(100):
-        # DESTRUCTION MODEL: Loss formula uses (mu + lambda_a) in denominator
-        if (a * lambda_a) < Lambda_star_old:
-            L = (a * lambda_a) / (mu + lambda_a)
-        else:
-            L = Lambda_star_old / (mu + lambda_a)
-
-        if Lambda_star_old >= mu:
-            EW = np.inf
-        else:
-            EW = 1 / (mu - Lambda_star_old)
-            
-        P_W_gt_T = np.exp(-T / EW) if EW != np.inf and EW > 0 else 1
-        q = L + (1 - L) * P_W_gt_T
-
-        if q >= 1:
-            Lambda_star_new = mu
-        else:
-            Lambda_star_new = lambda_n / (1 - q)
-        
-        if np.isclose(Lambda_star_new, Lambda_star_old, atol=1e-6) or Lambda_star_new >= mu:
-            break
-        Lambda_star_old = Lambda_star_new
-
-    final_EW = 1 / (mu - Lambda_star_new) if Lambda_star_new < mu else np.inf
-    return final_EW
-
-# --- SIMULATION MODEL (Following the working pattern) ---
+replications = 30
+warmup_period = 1000
+sim_duration = 5000
 
 class Packet:
-    """A class to represent packets, tracking their state."""
     def __init__(self, identifier, arrival_time):
         self.identifier = identifier
         self.original_arrival_time = arrival_time
-        self.current_arrival_time = arrival_time
-        self.destroyed = False  # Changed from 'corrupted' to 'destroyed'
+        self.attempt_start_time = arrival_time
 
 def packet_generator(env, queue, lambda_n):
-    """Generates packets with a Poisson arrival process."""
     packet_id = 0
     while True:
         yield env.timeout(random.expovariate(lambda_n))
-        packet = Packet(f"Packet_{packet_id}", env.now)
+        packet = Packet(f"P_{packet_id}", env.now)
         yield queue.put(packet)
         packet_id += 1
 
-def attacker(env, queue, lambda_a, a):
-    """Generates attacks that can destroy packets in the queue."""
+def server_process(env, servers, queues, node_id, p):
     while True:
-        yield env.timeout(random.expovariate(lambda_a))
-        if queue.items and random.random() < a:
-            target_packet = random.choice(queue.items)
-            target_packet.destroyed = True  # Changed from 'corrupted' to 'destroyed'
-
-def server_process(env, server, queue):
-    """Models the server processing packets from the queue."""
-    while True:
-        packet = yield queue.get()
-        
-        with server.request() as req:
+        packet = yield queues[node_id].get()
+        with servers[node_id].request() as req:
             yield req
             
-            waiting_time = env.now - packet.current_arrival_time
-            yield env.timeout(random.expovariate(mu))  # Service time
+            # Start of attempt at node 0
+            if node_id == 0:
+                packet.attempt_start_time = env.now
             
-            if packet.destroyed or waiting_time > T:
-                # Retransmit if destroyed or timed out
-                packet.destroyed = False  # Reset destroyed flag
-                packet.current_arrival_time = env.now
-                yield queue.put(packet)
+            # Service
+            yield env.timeout(random.expovariate(mu))
+            
+            # Check attack or timeout
+            if random.random() < p or (env.now - packet.attempt_start_time) > W:
+                # Failure: Restart from node 0
+                yield queues[0].put(packet)
             else:
-                # Success: record the total delay
-                total_delay = env.now - packet.original_arrival_time
-                packet_delays.append(total_delay)
+                # Success at this node
+                if node_id < N_tandem - 1:
+                    yield queues[node_id + 1].put(packet)
+                else:
+                    # Final success
+                    packet_delays.append(env.now - packet.original_arrival_time)
 
-def run_true_simulation(lambda_n, a):
-    """Runs a single simulation instance for a given set of parameters."""
+def run_tandem_simulation(p):
     global packet_delays
     packet_delays = []
     
     env = simpy.Environment()
-    packet_queue = simpy.Store(env)
-    server = simpy.Resource(env, capacity=1)
+    queues = [simpy.Store(env) for _ in range(N_tandem)]
+    servers = [simpy.Resource(env, capacity=1) for _ in range(N_tandem)]
     
-    env.process(packet_generator(env, packet_queue, lambda_n))
-    env.process(attacker(env, packet_queue, lambda_a, a))
-    env.process(server_process(env, server, packet_queue))
+    env.process(packet_generator(env, queues[0], lambda_arrival))
+    for i in range(N_tandem):
+        env.process(server_process(env, servers, queues, i, p))
     
     env.run(until=warmup_period)
     packet_delays = []
     env.run(until=warmup_period + sim_duration)
-
+    
     return np.mean(packet_delays) if packet_delays else np.inf
 
-def run_multiple_simulations(lambda_n, a, replications):
-    """
-    Runs the simulation multiple times (replications) and averages the results
-    to get a more statistically stable estimate of the average delay.
-    """
-    replication_results = []
-    for i in range(replications):
-        # Set a different seed for each replication for statistical independence
-        random.seed(i) 
-        np.random.seed(i)
-        
-        avg_delay = run_true_simulation(lambda_n, a)
-        if avg_delay != np.inf:
-            replication_results.append(avg_delay)
-    
-    # Return the average of all successful replications
-    return np.mean(replication_results) if replication_results else np.inf
+from scipy.stats import gamma
 
-# --- EXECUTION AND PLOTTING ---
-theoretic_results = {}
-simulation_results = {}
-
-for a in attack_effectiveness_values:
-    # Calculate theoretical results
-    theoretic_results[a] = [calculate_theoretic_delay_final(ln, a) for ln in normal_traffic_rates]
-    
-    print(f"\nRunning simulations for attack effectiveness a={a}...")
-    simulated_delays = []
-    for ln in normal_traffic_rates:
-        print(f"  Simulating with λn={ln:.2f}...")
-        # Check if the system is theoretically unstable first
-        if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
-            simulated_delays.append(np.inf)
-        else:
-            # Call the function to run multiple replications
-            avg_delay_from_replications = run_multiple_simulations(ln, a, replications)
-            simulated_delays.append(avg_delay_from_replications)
+def solve_tandem_theory(p):
+    Lambda = [lambda_arrival] * N_tandem
+    for _ in range(100):
+        # Calculate journey times and timeout probs
+        for i in range(N_tandem):
+            # Sum of delays up to i
+            E_S = sum(1/(mu - Lambda[j]) for j in range(i+1))
+            Var_S = sum(1/(mu - Lambda[j])**2 for j in range(i+1))
             
-    simulation_results[a] = simulated_delays
-    print("...done.")
+            # Gamma approx
+            k = E_S**2 / Var_S
+            theta = Var_S / E_S
+            P_timeout = 1 - gamma.cdf(W, a=k, scale=theta)
+            
+            # Rate at node i+1 (if exists) is Lambda_i * (1-p) * (1-P_timeout) ?
+            # No, retransmission is from 0. 
+            # Total attempts rate Lambda_star = lambda / P_succ
+            
+        # Overall success probability
+        E_S_total = sum(1/(mu - Lambda[j]) for j in range(N_tandem))
+        Var_S_total = sum(1/(mu - Lambda[j])**2 for j in range(N_tandem))
+        k_total = E_S_total**2 / Var_S_total
+        theta_total = Var_S_total / E_S_total
+        P_succ_overall = (1-p)**N_tandem * gamma.cdf(W, a=k_total, scale=theta_total)
+        
+        Lambda_new = [lambda_arrival / P_succ_overall] * N_tandem
+        
+        if np.isclose(Lambda_new[0], Lambda[0], rtol=1e-5):
+            break
+        Lambda = Lambda_new
+        
+    return (1/P_succ_overall) * sum(1/(mu - Lambda[j]) for j in range(N_tandem))
 
-# Plotting the results
-plt.figure(figsize=(12, 8))
-colors = ['b', 'g', 'r', 'y', 'm']
-for idx, a in enumerate(attack_effectiveness_values):
-    plt.plot(normal_traffic_rates, theoretic_results[a], color=colors[idx], linestyle='-', 
-             label=f'Theoretic delay (destroy) a={a}')
-    plt.scatter(normal_traffic_rates, simulation_results[a], color=colors[idx], marker='x', s=100, 
-                label=f'Simulated delay (destroy) a={a}')
+# --- MAIN ---
+p_range = np.linspace(0.01, 0.25, 10)
+theory_delays = [solve_tandem_theory(p) for p in p_range]
+sim_delays = []
 
-plt.xlabel('Normal Traffic Rate (λn)')
-plt.ylabel('Average Packet Delay (s)')
-plt.title('Comparison of Theoretic and Simulated Delay - Destruction Attacks')
+print("Running Tandem N=3 Simulation...")
+for p in p_range:
+    results = []
+    for r in range(replications):
+        random.seed(r)
+        np.random.seed(r)
+        results.append(run_tandem_simulation(p))
+    sim_delays.append(np.mean(results))
+
+plt.figure(figsize=(10, 6))
+plt.plot(p_range, theory_delays, 'b-', label='Theory (Gamma Approx)')
+plt.scatter(p_range, sim_delays, color='red', marker='x', s=100, label='Simulation')
+plt.xlabel('Attack Probability (p)')
+plt.ylabel('Average Delay (s)')
+plt.title(f'Tandem Network (N={N_tandem}) - Delay vs p')
 plt.legend()
 plt.grid(True)
-filename = f"destroy_plot_reps{replications}_warmup{warmup_period}_sim{sim_duration}.png"
-plt.savefig(filename)
-
-print(f"\nPlot saved as {filename}")
-
-# Print comparison
-for a in attack_effectiveness_values:
-    print(f"\nAttack effectiveness a={a}:")
-    for i, ln in enumerate(normal_traffic_rates):
-        theory_val = theoretic_results[a][i]
-        sim_val = simulation_results[a][i]
-        if theory_val != np.inf and sim_val != np.inf:
-            error = abs(theory_val - sim_val) / theory_val * 100
-            print(f"  λn={ln:.2f}: Theory={theory_val:.3f}, Sim={sim_val:.3f}, Error={error:.1f}%")
-        else:
-            print(f"  λn={ln:.2f}: Theory={theory_val}, Sim={sim_val}")
+plt.savefig('tandem/tandem_simulation_vs_theory_N3.png')
+print("Done. Plot saved in tandem folder.")
