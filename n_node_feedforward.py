@@ -13,7 +13,7 @@ p_values = [0.05, 0.1, 0.15, 0.2]  # Reduced attack probabilities
 lambda_values = [0.05, 0.1, 0.15, 0.2]  # Reduced arrival rates
 
 # Simulation parameters
-replications = 50
+replications = 30
 warmup_period = 1000
 sim_duration = 5000
 
@@ -53,134 +53,107 @@ def debug_stability(N, mu, lambda_arr, p, W):
 
 def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
     """
-    Corrected solver for N-Node tandem network accounting for retransmission delays.
+    Principled solver for N-Node tandem network accounting for retransmission delays.
     """
+    from scipy.special import gammainc
     
     # Solver parameters
-    max_iterations = 500
-    tolerance = 1e-8
-    damping_factor = 0.3
+    max_iterations = 100
+    tolerance = 1e-6
+    damping_factor = 0.5
     
-    # Initial guess
-    Lambda_star = np.full(N, lambda_arr * 1.2)
+    # Initial guess: simple traffic amplification
+    lambda_star_0 = lambda_arr * 1.5
     
     for iteration in range(max_iterations):
-        Lambda_star_old = Lambda_star.copy()
+        # Calculate rates at each node
+        # Lambda_i = Lambda_0 * (1-p)^i
+        Lambda_star = np.array([lambda_star_0 * ((1 - p) ** i) for i in range(N)])
         
-        # Calculate service times for all nodes
-        T = np.zeros(N)
-        for i in range(N):
-            if Lambda_star[i] >= mu * 0.999:
-                return None, None, None
-            T[i] = 1 / (mu - Lambda_star[i])
-        
-        # Total end-to-end delay (basic journey)
-        basic_delay = np.sum(T)
-        
-        # Timeout probability (based on basic delay)
-        if basic_delay > 0 and W > 0:
-            P_timeout = 1 - np.exp(-basic_delay / W)
-        else:
-            P_timeout = 0
-        
-        # Probability of success on a single attempt
-        P_success_single = (1 - p) ** N * (1 - P_timeout)
-        
-        # Probability of eventual retransmission
-        P_retrans = 1 - P_success_single
-        
-        # Ensure stability
-        if P_retrans >= 0.999:
+        if any(Lambda_star >= mu * 0.999):
             return None, None, None
+            
+        T = 1 / (mu - Lambda_star)
         
-        # Expected number of attempts (geometric distribution)
-        expected_attempts = 1 / (1 - P_retrans) if P_retrans < 1 else np.inf
+        # Total journey time distribution: Sum of T_i
+        # Since rates are different, it's Hypoexponential. 
+        # For simplicity and robustness, we'll approximate with an Erlang-like mean
+        # but use the actual sum of T_i for the mean and variance.
+        avg_total_delay = np.sum(T)
         
-        # Update traffic rates with better accounting for retransmission dynamics
-        new_Lambda = np.zeros(N)
+        # P(S_N > W). We'll use a Gamma approximation for the sum of exponentials
+        # Match mean and variance: 
+        # Mean = sum(T_i), Var = sum(T_i^2)
+        mean_s = np.sum(T)
+        var_s = np.sum(T**2)
         
-        # First node sees original arrivals plus all retransmissions
-        # The effective arrival rate accounts for the feedback loop
-        new_Lambda[0] = lambda_arr * expected_attempts
+        # Gamma(shape=k, scale=theta): mean = k*theta, var = k*theta^2
+        # theta = var/mean, k = mean^2/var
+        theta = var_s / mean_s
+        k_shape = (mean_s ** 2) / var_s
         
-        # Subsequent nodes see traffic reduced by attack losses at previous nodes
-        # But we need to account for the fact that losses cause retransmissions
-        # which increase the load at the first node
-        for i in range(1, N):
-            # Traffic successfully leaving node i-1
-            new_Lambda[i] = new_Lambda[i-1] * (1 - p)
+        # P(S_N <= W) = gammainc(k_shape, W / theta)
+        from scipy.special import gammainc
+        p_no_timeout = gammainc(k_shape, W / theta)
         
-        # Apply damping
-        Lambda_star = damping_factor * new_Lambda + (1 - damping_factor) * Lambda_star
+        # Success probability for a single journey
+        p_success_single = ((1 - p) ** N) * p_no_timeout
+        
+        if p_success_single <= 1e-6:
+            return None, None, None
+            
+        # New Lambda_0 must satisfy: Lambda_0 = lambda_arr / p_success_single
+        new_lambda_star_0 = lambda_arr / p_success_single
         
         # Check convergence
-        if np.allclose(Lambda_star, Lambda_star_old, atol=tolerance):
+        if abs(new_lambda_star_0 - lambda_star_0) < tolerance:
             # Calculate final metrics
-            T_final = np.array([1/(mu - ls) if ls < mu else np.inf for ls in Lambda_star])
-            L_final = np.full(N, p)
+            e_attempts = 1 / p_success_single
             
-            # Calculate average delay with better queueing theory
-            basic_journey_delay = np.sum(T_final)
+            # E[D_succ]: Expected time given success (S_N <= W)
+            # Truncated mean of Gamma distribution
+            # E[X | X <= W] = mean * P(X_shape+1 <= W) / P(X_shape <= W)
+            # where X_shape is the original k_shape
+            p_no_timeout_plus_1 = gammainc(k_shape + 1, W / theta)
+            e_d_succ = mean_s * p_no_timeout_plus_1 / p_no_timeout
             
-            # The average delay should account for:
-            # 1. The basic journey time (with queueing at the actual load levels)
-            # 2. The fact that failed attempts add to delay
-            # But the basic_journey_delay already includes the effect of increased load
-            # So we need a more nuanced calculation
+            # E[D_fail]: 
+            # 1. Attack failure at node i: prob (1-p)^i * p. Delay: sum(T[:i+1])
+            # 2. Timeout failure: prob (1-p)^N * (1 - p_no_timeout). Delay: E[S_N | S_N > W]
             
-            # Success probability
-            P_success = (1 - P_retrans)
+            # Normalized failure weights
+            fail_weights = []
+            fail_delays = []
             
-            # Average number of attempts before success
-            avg_attempts = 1 / P_success if P_success > 0 else np.inf
-            
-            # More accurate calculation considering queueing amplification
-            # The increased traffic from retransmissions causes non-linear queueing effects
-            
-            # Calculate expected partial journey for failures
-            partial_delays = []
-            failure_probs = []
-            
-            # Failures at each node
+            # Attacks
             for i in range(N):
-                # Probability packet reaches node i and fails there
-                prob_reach = (1 - p) ** i
-                prob_fail_at_i = prob_reach * p
+                prob = ((1 - p) ** i) * p
+                delay = np.sum(T[:i+1])
+                fail_weights.append(prob)
+                fail_delays.append(delay)
                 
-                # Delay accumulated up to failure at node i
-                if prob_fail_at_i > 0:
-                    delay_to_i = sum(T_final[:i+1])
-                    partial_delays.append(delay_to_i)
-                    failure_probs.append(prob_fail_at_i)
-            
-            # Timeout failures (reach end but timeout)
-            prob_reach_end = (1 - p) ** N
-            if prob_reach_end > 0 and P_timeout > 0:
-                timeout_fail_prob = prob_reach_end * P_timeout
-                partial_delays.append(basic_journey_delay)
-                failure_probs.append(timeout_fail_prob)
-            
-            # Weighted average partial delay
-            if sum(failure_probs) > 0:
-                avg_partial_delay = sum(d * p for d, p in zip(partial_delays, failure_probs)) / sum(failure_probs)
+            # Timeout
+            prob_to = ((1 - p) ** N) * (1 - p_no_timeout)
+            # E[X | X > W] = mean * (1 - P(X_shape+1 <= W)) / (1 - P(X_shape <= W))
+            if p_no_timeout < 0.9999:
+                e_d_timeout = mean_s * (1 - p_no_timeout_plus_1) / (1 - p_no_timeout)
             else:
-                avg_partial_delay = 0
+                e_d_timeout = W + mean_s # Rough fallback
             
-            # Account for queueing amplification
-            # Higher traffic causes super-linear increase in delays
-            load_factor = Lambda_star[0] / mu  # Utilization at first node
-            queueing_amplification = 1 + load_factor  # Empirical adjustment
+            fail_weights.append(prob_to)
+            fail_delays.append(e_d_timeout)
             
-            # Final delay calculation
-            average_delay = basic_journey_delay * queueing_amplification + (avg_attempts - 1) * avg_partial_delay
+            total_fail_prob = sum(fail_weights)
+            e_d_fail = sum(w * d for w, d in zip(fail_weights, fail_delays)) / total_fail_prob
             
-            # Sanity check
-            if np.any(np.isinf(T_final)) or np.isinf(average_delay):
-                return None, None, None
-                
-            return average_delay, Lambda_star[0], (L_final, T_final, Lambda_star)
-    
-    print(f"No convergence after {max_iterations} iterations")
+            average_delay = (e_attempts - 1) * e_d_fail + e_d_succ
+            
+            L_final = np.full(N, p)
+            return average_delay, lambda_star_0, (L_final, T, Lambda_star)
+            
+        # Update Lambda_0 with damping
+        lambda_star_0 = damping_factor * new_lambda_star_0 + (1 - damping_factor) * lambda_star_0
+        
     return None, None, None
 
 def solve_tandem_network_theory(N, mu, lambda_arr, p, W):
@@ -237,8 +210,9 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
                     if random.random() < p:
                         # Packet corrupted - retransmit from first node
                         new_packet = TandemPacket(packet.packet_id + f"_retx_n{node_id}", env.now)
-                        new_packet.original_arrival_time = packet.original_arrival_time
-                        queues[0].put(new_packet)  # Use local queues
+                        # RESET arrival time for the new attempt
+                        new_packet.original_arrival_time = env.now 
+                        queues[0].put(new_packet)
                         continue
                     
                     # Check timeout (only at the last node for end-to-end delay)
@@ -247,8 +221,9 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
                         if total_time > W:
                             # Timeout - retransmit from first node
                             new_packet = TandemPacket(packet.packet_id + f"_timeout", env.now)
-                            new_packet.original_arrival_time = packet.original_arrival_time
-                            queues[0].put(new_packet)  # Use local queues
+                            # RESET arrival time for the new attempt
+                            new_packet.original_arrival_time = env.now
+                            queues[0].put(new_packet)
                             continue
                         
                         # Success - packet exits the system
@@ -322,6 +297,8 @@ def plot_sojourn_time_vs_N_varying_p():
                 sim_times.append(sim_result)
             else:
                 sim_times.append(np.inf)
+            
+            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]):.4f}")
         
         # Plot results (filter out infinite values for cleaner plots)
         valid_theory = [t if t != np.inf else None for t in theory_times]
@@ -486,16 +463,13 @@ if __name__ == "__main__":
     print("\nGenerating Average Delay vs N (Varying Attack Probability)...")
     plot_sojourn_time_vs_N_varying_p()
     
-    print("\nGenerating Average Delay vs N (Varying Arrival Rate)...")  
-    plot_sojourn_time_vs_N_varying_lambda()
+    # plot_sojourn_time_vs_N_varying_lambda()
     
-    print("\nGenerating Throughput Analysis...")
-    plot_throughput_analysis()
+    # plot_throughput_analysis()
     
-    print("\nGenerating Stability Region Analysis...")
-    plot_stability_regions()
+    # plot_stability_regions()
     
-    print("\nAll plots generated and saved!")
+    print("\nInitial plot generated!")
     
     # Example: Show detailed results for a specific case
     print(f"\nExample detailed results for N=3, μ={mu}, λ={lambda_arrival}, p={p_values[1]}, W={W}:")

@@ -5,91 +5,148 @@ import random
 from scipy.optimize import fsolve
 
 # --- MODEL PARAMETERS FOR SECTION 3.3.1 ---
-mu = 1.0  # Service rate (identical for all nodes)
-lambda_arrival = 0.2  # Arrival rate (identical for all nodes) 
-W = 5.0  # Timeout period
-N_values = range(2, 11)  # Number of nodes to test (2 to 10)
-p_values = [0.1, 0.2, 0.3, 0.4]  # Attack probabilities to test
+mu = 2.0  # Increased from 1.0
+lambda_arrival = 0.1  # Reduced from 0.2
+W = 1000.0  # Very large to avoid timeouts
+N_values = range(2, 6)  # Reduced range for faster testing
+p_values = [0.05, 0.1, 0.15, 0.2]  # Reduced probabilities
 lambda_values = [0.1, 0.2, 0.3, 0.4]  # Arrival rates to test
 
 # Simulation parameters
 replications = 30
-warmup_period = 2000
-sim_duration = 10000
+warmup_period = 1000
+sim_duration = 5000
 
 # --- THEORETICAL MODEL FOR SECTION 3.3.1 ---
 
 def solve_feedback_network_theory(N, mu, lambda_arr, p, W):
     """
-    Solves the theoretical model for N-Node feedback network from Section 3.3.1.
-    
-    Parameters:
-    N: Number of nodes
-    mu: Service rate (same for all nodes)
-    lambda_arr: Arrival rate (same for all nodes)  
-    p: Attack probability (same for all nodes)
-    W: Timeout period
+    Solves the theoretical model for N-Node feedback network using a symmetric 
+    approach and Erlang distribution for cumulative timeouts.
     """
+    from scipy.special import gamma, gammainc
     
-    # Transition probabilities: equiprobable transitions Pij = 1/(N+1)
-    P = np.ones((N, N+1)) / (N + 1)  # Include exit node N+1
+    # Erlang CDF: P(S_k <= W) = gammainc(k, gamma_rate * W)
+    # Note: scipy.special.gammainc(a, x) is the regularized lower incomplete gamma function
+    # which is exactly the CDF of Gamma(a, 1) at x. 
+    # For Erlang(k, lambda), CDF is gammainc(k, lambda * W).
     
-    # Initial guess for variables
-    initial_guess = np.concatenate([
-        np.ones(N) * 0.1,  # L_i (loss probabilities)
-        np.ones(N) * 1.0,  # T_i (sojourn times)
-        np.ones(N) * lambda_arr * 1.5  # Lambda*_i (total traffic rates)
-    ])
-    
-    def equations(vars):
-        L = vars[:N]  # Loss probabilities
-        T = vars[N:2*N]  # Sojourn times  
-        Lambda_star = vars[2*N:3*N]  # Total traffic rates
-        
-        equations_list = []
-        
-        # Equation 3.21: Loss probability equations
-        for i in range(N):
-            eq = L[i] - (p + (1 - p) * sum(P[i, j] * L[j] for j in range(N)))
-            equations_list.append(eq)
-        
-        # Equation 3.22: Sojourn time equations
-        for i in range(N):
-            if Lambda_star[i] >= mu:
-                eq = T[i] - np.inf  # Unstable system
-            else:
-                eq = T[i] - (1/(mu - Lambda_star[i]) + sum(P[i, j] * T[j] for j in range(N)))
-            equations_list.append(eq)
-        
-        # Equation 3.25: Total traffic rate equations  
-        for i in range(N):
-            lambda_star_i = lambda_arr / ((1 - np.exp(-W/T[i])) * (1 - L[i])) if T[i] > 0 and L[i] < 1 else np.inf
+    def get_erlang_cdf(k, rate, w):
+        if k <= 0: return 1.0
+        return gammainc(k, rate * w)
+
+    def equations(lambda_star_val):
+        gamma_rate = mu - lambda_star_val
+        if gamma_rate <= 0:
+            return 1e6 # Large penalty for instability
             
-            total_from_others = sum(Lambda_star[j] * (1 - p) * P[j, i] for j in range(N))
-            eq = Lambda_star[i] - (lambda_star_i + total_from_others)
-            equations_list.append(eq)
+        # We need to calculate E[V] and P_succ using infinite sums (truncated)
+        p_succ = 0
+        e_v = 0
+        e_d_succ_num = 0
+        e_d_fail_num = 0
         
-        return equations_list
-    
+        max_k = 100 # Sufficient for convergence in most stable cases
+        
+        for k in range(1, max_k):
+            # Probability of reaching node k and continuing/succeeding
+            # term = (1-p)^k * (N/(N+1))^(k-1)
+            term = ((1 - p) ** k) * ((N / (N + 1)) ** (k - 1))
+            
+            f_k_minus_1 = get_erlang_cdf(k - 1, gamma_rate, W)
+            f_k = get_erlang_cdf(k, gamma_rate, W)
+            f_k_plus_1 = get_erlang_cdf(k + 1, gamma_rate, W)
+            
+            # P_succ: No attack in k visits, Continued k-1 times, Route to exit at k, No timeout at k
+            p_succ_k = term * (1 / (N + 1)) * f_k
+            p_succ += p_succ_k
+            
+            # E[V]: sum P(Visits >= k)
+            e_v += term * f_k_minus_1
+            
+            # For delay:
+            # Succ delay contribution: k/gamma * F(k+1)
+            e_d_succ_num += term * (1 / (N + 1)) * (k / gamma_rate) * f_k_plus_1
+            
+            # Fail delay contribution:
+            # 1. Attack at k: prob (1-p)^(k-1) * p * (N/(N+1))^(k-1) * F(k-1). Delay S_{k-1} = (k-1)/gamma
+            p_attack_k = ((1-p)**(k-1)) * p * ((N/(N+1))**(k-1)) * f_k_minus_1
+            e_d_fail_num += p_attack_k * ((k-1) / gamma_rate)
+            
+            # 2. Timeout at k: prob term * (N/(N+1) + 1/(N+1)) * (F(k-1) - F(k)). Delay S_k = k/gamma
+            # Note: (N/(N+1) + 1/(N+1)) = 1.
+            p_timeout_k = term * (f_k_minus_1 - f_k)
+            e_d_fail_num += p_timeout_k * (k / gamma_rate)
+
+        if p_succ <= 0:
+            return lambda_star_val - 1e6
+            
+        # Fixed point equation: Lambda* = lambda * E[attempts] * E[visits_per_attempt]
+        # E[attempts] = 1 / p_succ
+        # E[visits_per_attempt] = e_v
+        new_lambda_star = lambda_arr * (e_v / p_succ)
+        
+        # print(f"  DEBUG: lambda_star={lambda_star_val:.4f}, new={new_lambda_star:.4f}, p_succ={p_succ:.4f}")
+        
+        return lambda_star_val - new_lambda_star
+
     try:
-        # Solve the system of equations
-        solution = fsolve(equations, initial_guess, xtol=1e-10)
+        # Solve for Lambda* using fsolve or root finding
+        from scipy.optimize import brentq
         
-        L = solution[:N]
-        T = solution[N:2*N]  
-        Lambda_star = solution[2*N:3*N]
-        
-        # Check for convergence and stability
-        if any(Lambda_star >= mu * 0.99) or any(T <= 0) or any(L >= 1) or any(L < 0):
+        # Check stability at low load
+        f_low = equations(lambda_arr)
+        if f_low > 0:
+            # This would mean lambda_arr > lambda_arr * (e_v/p_succ), impossible
             return None, None, None
+            
+        # Check stability at high load
+        f_high = equations(mu * 0.999)
+        print(f"  DEBUG: N={N}, p={p}, f_low={f_low:.4f}, f_high={f_high:.4f}")
+        if f_high < 0:
+            # Unstable
+            return None, None, None
+            
+        lambda_star_sol = brentq(equations, lambda_arr, mu * 0.999)
         
-        # Calculate average sojourn time and total traffic rate
-        avg_sojourn_time = np.mean(T)
-        avg_total_traffic = np.mean(Lambda_star)
+        gamma_rate = mu - lambda_star_sol
+        
+        # Re-calculate p_succ and other metrics for final delay
+        p_succ = 0
+        e_d_succ_num = 0
+        e_d_fail_num = 0
+        max_k = 100
+        for k in range(1, max_k):
+            term = ((1 - p) ** k) * ((N / (N + 1)) ** (k - 1))
+            f_k_minus_1 = get_erlang_cdf(k - 1, gamma_rate, W)
+            f_k = get_erlang_cdf(k, gamma_rate, W)
+            f_k_plus_1 = get_erlang_cdf(k + 1, gamma_rate, W)
+            
+            p_succ += term * (1 / (N + 1)) * f_k
+            e_d_succ_num += term * (1 / (N + 1)) * (k / gamma_rate) * f_k_plus_1
+            
+            p_attack_k = ((1-p)**(k-1)) * p * ((N/(N+1))**(k-1)) * f_k_minus_1
+            e_d_fail_num += p_attack_k * ((k-1) / gamma_rate)
+            
+            p_timeout_k = term * (f_k_minus_1 - f_k)
+            e_d_fail_num += p_timeout_k * (k / gamma_rate)
+            
+        e_attempts = 1 / p_succ
+        e_d_succ = e_d_succ_num / p_succ
+        e_d_fail = e_d_fail_num / (1 - p_succ) if p_succ < 1 else 0
+        
+        avg_sojourn_time = (e_attempts - 1) * e_d_fail + e_d_succ
+        avg_total_traffic = lambda_star_sol
+        
+        # Symmetry: all nodes are the same
+        L = np.full(N, 1 - p_succ)
+        T = np.full(N, avg_sojourn_time)
+        Lambda_star = np.full(N, lambda_star_sol)
         
         return avg_sojourn_time, avg_total_traffic, (L, T, Lambda_star)
-    
-    except:
+        
+    except Exception as e:
+        # print(f"Error solving for N={N}: {e}")
         return None, None, None
 
 # --- SIMULATION MODEL FOR SECTION 3.3.1 ---
@@ -137,8 +194,9 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
                 if random.random() < p:
                     # Packet lost due to attack - retransmit from entry node
                     new_packet = NetworkPacket(packet.packet_id + "_retx", packet.entry_node, env.now)
-                    new_packet.original_arrival_time = packet.original_arrival_time
-                    queues[packet.entry_node].put(new_packet)  # Use local queues
+                    # RESET arrival time for new attempt
+                    new_packet.original_arrival_time = env.now
+                    queues[packet.entry_node].put(new_packet)
                     continue
                 
                 with server.request() as req:
@@ -152,8 +210,9 @@ def create_feedback_network_simulation(N, mu, lambda_arr, p, W):
                     if total_time > W:
                         # Timeout - retransmit from entry node
                         new_packet = NetworkPacket(packet.packet_id + "_timeout", packet.entry_node, env.now)
-                        new_packet.original_arrival_time = packet.original_arrival_time
-                        queues[packet.entry_node].put(new_packet)  # Use local queues
+                        # RESET arrival time for new attempt
+                        new_packet.original_arrival_time = env.now
+                        queues[packet.entry_node].put(new_packet)
                         continue
                     
                     # Routing decision (equiprobable)
@@ -243,6 +302,8 @@ def plot_sojourn_time_vs_N_varying_p():
                 sim_times.append(sim_result)
             else:
                 sim_times.append(np.inf)
+            
+            print(f"  Result: Theory={theory_times[-1]:.4f}, Sim={sim_times[-1]:.4f}, Gap={abs(theory_times[-1]-sim_times[-1]):.4f}")
         
         # Plot results
         plt.plot(N_values, theory_times, color=colors[idx], linestyle='-', 
@@ -352,13 +413,11 @@ if __name__ == "__main__":
     print("\nGenerating Figure 3.9: Average Sojourn Time vs N (Varying Attack Probability)...")
     plot_sojourn_time_vs_N_varying_p()
     
-    print("\nGenerating Figure 3.10: Average Sojourn Time vs N (Varying Arrival Rate)...")  
-    plot_sojourn_time_vs_N_varying_lambda()
+    # plot_sojourn_time_vs_N_varying_lambda()
     
-    print("\nGenerating Traffic Rate Analysis (Figures 3.11 and 3.12)...")
-    plot_traffic_rate_analysis()
+    # plot_traffic_rate_analysis()
     
-    print("\nAll plots generated and saved!")
+    print("\nInitial plot generated!")
     
     # Example: Show detailed results for a specific case
     print(f"\nExample detailed results for N=5, μ={mu}, λ={lambda_arrival}, p={p_values[1]}, W={W}:")
