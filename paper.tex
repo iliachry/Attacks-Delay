@@ -27,10 +27,17 @@
 The reliable transmission of data in adversarial environments requires a deep understanding of how malicious interference interacts with protocol-level recovery mechanisms. This paper provides a comprehensive mathematical and empirical exploration of end-to-end sojourn time in networks subjected to destruction and modification attacks. We move beyond simplistic queueing models by incorporating the non-linear effects of timeout-driven retransmissions and the renewal properties of attack-induced restarts. We analyze five distinct scenarios ranging from isolated single nodes to complex feedback meshes. Our findings demonstrate that while localized attacks can be mitigated, their cumulative effect in multi-hop topologies can lead to abrupt system instability. The theoretical models presented herein are validated against high-fidelity discrete-event simulations, showing an exceptional alignment with an average error of less than 1\%.
 \end{abstract}
 
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig1_system_model.png}
+    \caption{System model overview. Packets are transmitted from Source to Destination through a series of intermediate nodes. An adversary can perform destruction attacks (pre-service) or modification attacks (post-service). Failed attempts trigger a timeout-driven retransmission loop.}
+    \label{fig:system_model}
+\end{figure}
+
 \section{Introduction}
 As communication infrastructures increasingly operate in hostile or resource-constrained settings—such as decentralized IoT deployments or adversarial mesh networks—the traditional assumptions of reliable service and benign traffic patterns no longer hold. In such environments, a packet's journey is hindered not only by stochastic queueing delays but also by malicious actors capable of dropping, corrupting, or modifying data. 
 
-A fundamental strategy for ensuring data integrity in these networks is the use of retransmission protocols combined with strict timeout windows. While effective at ensuring eventual delivery, this "restart" property introduces a dangerous positive feedback loop: as attacks or congestion increase, more packets time out and are retransmitted, which in turn increases the total traffic load ($\Lambda^*$) and further exacerbates delays. This can lead to a "cliff" effect where a system that appears stable suddenly becomes unusable. This paper aims to map these stability boundaries and provide precise analytical tools for predicting end-to-end delay across various network architectures.
+A fundamental strategy for ensuring data integrity in these networks is the use of retransmission protocols combined with strict timeout windows. While effective at ensuring eventual delivery, this "restart" property introduces a dangerous positive feedback loop: as attacks or congestion increase, more packets time out and are retransmitted, which in turn increases the total traffic load ($\Lambda^*$) and further exacerbates delays. This can lead to a "cliff" effect where a system that appears stable suddenly becomes unusable. This paper aims to map these stability boundaries and provide precise analytical tools for predicting end-to-end delay across various network architectures. The general system model, including attack modalities and retransmission logic, is illustrated in Figure \ref{fig:system_model}.
 
 \section{Analytical Foundations for Individual Nodes}
 The performance of any complex network is fundamentally built upon the behavior of its constituent nodes. We model each node as a server with an exponentially distributed service rate $\mu$. The arrival process is a superposition of new external traffic ($\lambda$) and internal retransmissions.
