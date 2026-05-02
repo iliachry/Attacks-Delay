@@ -52,7 +52,7 @@ def calculate_theoretic_delay(lambda_n, p):
 
 # --- SIMULATION MODEL ---
 
-packet_delays = []
+# Removed global packet_delays to allow parallelization
 
 class Packet:
     """A class to represent packets, tracking their state."""
@@ -72,7 +72,7 @@ def packet_generator(env, queue, lambda_n):
         yield queue.put(packet)
         packet_id += 1
 
-def server_process(env, server, queue, p):
+def server_process(env, server, queue, mu, p, T, delays):
     """Models the server processing packets from the queue."""
     while True:
         packet = yield queue.get()
@@ -93,81 +93,76 @@ def server_process(env, server, queue, p):
             else:
                 # Success: record total end-to-end delay
                 total_delay = env.now - packet.original_arrival_time
-                packet_delays.append(total_delay)
+                delays.append(total_delay)
 
-def run_true_simulation(lambda_n, a):
+def run_true_simulation(lambda_n, a, seed):
     """Runs a single simulation instance for a given set of parameters."""
-    global packet_delays
-    packet_delays = []
+    random.seed(seed)
+    np.random.seed(seed)
     
+    delays = []
     env = simpy.Environment()
     packet_queue = simpy.Store(env)
     server = simpy.Resource(env, capacity=1)
     
     env.process(packet_generator(env, packet_queue, lambda_n))
-    env.process(server_process(env, server, packet_queue, a))
+    env.process(server_process(env, server, packet_queue, mu, a, T, delays))
     
     env.run(until=warmup_period)
-    packet_delays = []
+    delays.clear() # Reset after warmup
     env.run(until=warmup_period + sim_duration)
 
-    return np.mean(packet_delays) if packet_delays else np.inf
+    return np.mean(delays) if delays else np.inf
 
 # --- NEW: FUNCTION FOR MULTIPLE REPLICATIONS ---
+from concurrent.futures import ProcessPoolExecutor
+
 def run_multiple_simulations(lambda_n, a, replications):
-    """
-    Runs the simulation multiple times (replications) and averages the results
-    to get a more statistically stable estimate of the average delay.
-    """
-    replication_results = []
-    for i in range(replications):
-        # Set a different seed for each replication for statistical independence
-        random.seed(i) 
-        np.random.seed(i)
-        
-        avg_delay = run_true_simulation(lambda_n, a)
-        if avg_delay != np.inf:
-            replication_results.append(avg_delay)
+    """Runs multiple replications in parallel and averages results."""
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(run_true_simulation, lambda_n, a, i) for i in range(replications)]
+        replication_results = [f.result() for f in futures if f.result() != np.inf]
     
-    # Return the average of all successful replications
     return np.mean(replication_results) if replication_results else np.inf
 
-# --- EXECUTION AND PLOTTING ---
-theoretic_results = {}
-simulation_results = {}
+if __name__ == '__main__':
+    theoretic_results = {}
+    simulation_results = {}
 
-for a in attack_effectiveness_values:
-    # Calculate theoretical results
-    theoretic_results[a] = [calculate_theoretic_delay(ln, a) for ln in normal_traffic_rates]
+    for a in attack_effectiveness_values:
+        # Calculate theoretical results
+        theoretic_results[a] = [calculate_theoretic_delay(ln, a) for ln in normal_traffic_rates]
     
-    print(f"\nRunning simulations for attack effectiveness a={a}...")
-    simulated_delays = []
-    for ln in normal_traffic_rates:
-        print(f"  Simulating with lambda_n={ln:.2f}...")
-        # Check if the system is theoretically unstable first
-        if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
-            simulated_delays.append(np.inf)
-        else:
-            # MODIFIED: Call the function to run multiple replications
-            avg_delay_from_replications = run_multiple_simulations(ln, a, replications)
-            simulated_delays.append(avg_delay_from_replications)
-            
-    simulation_results[a] = simulated_delays
-    print("...done.")
+        print(f"\nRunning simulations for attack effectiveness a={a}...")
+        simulated_delays = []
+        for ln in normal_traffic_rates:
+            print(f"  Simulating with lambda_n={ln:.2f}...")
+            # Check if the system is theoretically unstable first
+            if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
+                simulated_delays.append(np.inf)
+            else:
+                # MODIFIED: Call the function to run multiple replications
+                avg_delay_from_replications = run_multiple_simulations(ln, a, replications)
+                simulated_delays.append(avg_delay_from_replications)
+                
+        simulation_results[a] = simulated_delays
+        print("...done.")
 
-# Plotting the results
-plt.figure(figsize=(12, 8))
-colors = ['b', 'g', 'r', 'y', 'm']
-for idx, a in enumerate(attack_effectiveness_values):
-    plt.plot(normal_traffic_rates, theoretic_results[a], color=colors[idx], linestyle='-', label=f'Theoretic delay a={a}')
-    plt.scatter(normal_traffic_rates, simulation_results[a], color=colors[idx], marker='x', s=100, label=f'Simulated delay a={a}')
+    # Plotting the results
+    plt.figure(figsize=(12, 8))
+    colors = ['b', 'g', 'r', 'y', 'm']
+    for idx, a in enumerate(attack_effectiveness_values):
+        plt.plot(normal_traffic_rates, theoretic_results[a], color=colors[idx], linestyle='-', label=f'Theoretic delay a={a}')
+        plt.scatter(normal_traffic_rates, simulation_results[a], color=colors[idx], marker='x', s=100, label=f'Simulated delay a={a}')
 
-plt.xlabel('Normal Traffic Rate (λn)')
-plt.ylabel('Average Packet Delay (s)')
-plt.title('Comparison of Theoretic and Simulated Delay (with Multiple Replications)')
-plt.legend()
-plt.grid(True)
-filename = f"plot_reps{replications}_warmup{warmup_period}_sim{sim_duration}.png"
-plt.savefig(filename)
+    plt.xlabel('Normal Traffic Rate (λn)')
+    plt.ylabel('Average Packet Delay (s)')
+    plt.title('Comparison of Theoretic and Simulated Delay (with Multiple Replications)')
+    plt.legend()
+    plt.grid(True)
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    filename = f"plot_reps{replications}_warmup{warmup_period}_sim{sim_duration}.png"
+    plt.savefig(os.path.join(script_dir, filename))
 
-print(f"\nPlot saved as {filename}")
+    print(f"\nPlot saved as {filename}")

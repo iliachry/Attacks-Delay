@@ -9,13 +9,13 @@ lambda_a = 1.5
 T = 2
 normal_traffic_rates = np.linspace(1, 5, 10)
 attack_effectiveness_values = [0.2, 0.5, 0.8]
+backoff_avg = 0.03 # Average of uniform(0.01, 0.05)
 
 # --- SIMULATION PARAMETERS ---
 replications = 50
 warmup_period = 500
 sim_duration = 5000
-
-packet_delays = []
+# Removed global packet_delays to allow parallelization
 
 # --- THEORETICAL MODEL (Unchanged) ---
 def calculate_theoretic_delay_final(lambda_n, p):
@@ -57,8 +57,10 @@ def calculate_theoretic_delay_final(lambda_n, p):
     if Lambda_star >= mu:
         return np.inf
         
-    # Total delay = E[A] * E[D_attempt]
-    return Lambda_star / lambda_n * E_D_attempt
+    # Total delay = E[A] * E[D_attempt] + (E[A] - 1) * backoff
+    # Note: every failure (attack or timeout) triggers a backoff before re-entry
+    e_a = Lambda_star / lambda_n
+    return e_a * E_D_attempt + (e_a - 1) * 0.03
 
 # --- CORRECTED SIMULATION MODEL ---
 
@@ -79,7 +81,7 @@ def packet_generator(env, queue, lambda_n):
         yield queue.put(packet)
         packet_id += 1
 
-def server_process(env, server, queue, p):
+def server_process(env, server, queue, mu, p, T, delays):
     """Models the server processing packets from the queue."""
     while True:
         packet = yield queue.get()
@@ -93,6 +95,7 @@ def server_process(env, server, queue, p):
             if random.random() < p:
                 # Destruction: no service time consumed
                 packet.attempt_start_time = env.now # Reset timer for next attempt
+                yield env.timeout(random.uniform(0.01, 0.05)) # Small backoff to de-correlate
                 yield queue.put(packet)
             else:
                 # Service time consumed if not destroyed
@@ -101,78 +104,93 @@ def server_process(env, server, queue, p):
                 # Check for timeout (total time in node)
                 if (env.now - packet.attempt_start_time) > T:
                     packet.attempt_start_time = env.now # Reset timer for next attempt
+                    yield env.timeout(random.uniform(0.01, 0.05)) # Small backoff
                     yield queue.put(packet)
                 else:
                     # Success
                     total_delay = env.now - packet.original_arrival_time
-                    packet_delays.append(total_delay)
+                    delays.append(total_delay)
 
-def run_true_simulation(lambda_n, a):
+def run_true_simulation(lambda_n, a, seed):
     """Runs a single simulation instance for a given set of parameters."""
-    global packet_delays
-    packet_delays = []
+    random.seed(seed)
+    np.random.seed(seed)
     
+    delays = []
     env = simpy.Environment()
     packet_queue = simpy.Store(env)
     server = simpy.Resource(env, capacity=1)
     
     env.process(packet_generator(env, packet_queue, lambda_n))
-    env.process(server_process(env, server, packet_queue, a))
+    env.process(server_process(env, server, packet_queue, mu, a, T, delays))
     
     env.run(until=warmup_period)
-    packet_delays = []
+    delays.clear() # Reset after warmup
     env.run(until=warmup_period + sim_duration)
 
-    return np.mean(packet_delays) if packet_delays else np.inf
+    return np.mean(delays) if delays else np.inf
+
+from concurrent.futures import ProcessPoolExecutor
 
 def run_multiple_simulations(lambda_n, a, replications):
-    """Runs multiple replications and averages results."""
-    replication_results = []
-    for i in range(replications):
-        random.seed(i) 
-        np.random.seed(i)
-        
-        avg_delay = run_true_simulation(lambda_n, a)
-        if avg_delay != np.inf:
-            replication_results.append(avg_delay)
+    """Runs multiple replications in parallel and averages results."""
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(run_true_simulation, lambda_n, a, i) for i in range(replications)]
+        replication_results = [f.result() for f in futures if f.result() != np.inf]
     
     return np.mean(replication_results) if replication_results else np.inf
 
-# --- EXECUTION AND PLOTTING ---
-theoretic_results = {}
-simulation_results = {}
+if __name__ == '__main__':
+    theoretic_results = {}
+    simulation_results = {}
+    all_data = []
 
-for a in attack_effectiveness_values:
-    theoretic_results[a] = [calculate_theoretic_delay_final(ln, a) for ln in normal_traffic_rates]
-    
-    print(f"\nRunning simulations for attack effectiveness a={a}...")
-    simulated_delays = []
-    for ln in normal_traffic_rates:
-        print(f"  Simulating with lambda_n={ln:.2f}...")
-        if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
-            simulated_delays.append(np.inf)
-        else:
-            avg_delay_from_replications = run_multiple_simulations(ln, a, replications)
-            simulated_delays.append(avg_delay_from_replications)
-            
-    simulation_results[a] = simulated_delays
-    print("...done.")
+    for a in attack_effectiveness_values:
+        theoretic_results[a] = [calculate_theoretic_delay_final(ln, a) for ln in normal_traffic_rates]
+        
+        print(f"\nRunning simulations for attack effectiveness a={a}...")
+        simulated_delays = []
+        for ln in normal_traffic_rates:
+            print(f"  Simulating with lambda_n={ln:.2f}...")
+            if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
+                simulated_delays.append(np.inf)
+            else:
+                avg_delay_from_replications = run_multiple_simulations(ln, a, replications)
+                simulated_delays.append(avg_delay_from_replications)
+                
+            current_theory = theoretic_results[a][list(normal_traffic_rates).index(ln)]
+            all_data.append({
+                "a": float(a),
+                "lambda_n": float(ln),
+                "theory": float(current_theory),
+                "sim": float(simulated_delays[-1]),
+                "gap": float(abs(current_theory - simulated_delays[-1])) if current_theory != np.inf and simulated_delays[-1] != np.inf else 0
+            })
+                
+        simulation_results[a] = simulated_delays
+        print("...done.")
 
-# Plotting
-plt.figure(figsize=(12, 8))
-colors = ['b', 'g', 'r', 'y', 'm']
-for idx, a in enumerate(attack_effectiveness_values):
-    plt.plot(normal_traffic_rates, theoretic_results[a], color=colors[idx], linestyle='-', 
-             label=f'Theoretic delay (destroy) a={a}')
-    plt.scatter(normal_traffic_rates, simulation_results[a], color=colors[idx], marker='x', s=100, 
-                label=f'Simulated delay (destroy) a={a}')
+    import json
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(script_dir, 'results_destruction.json'), 'w') as f:
+        json.dump(all_data, f, indent=4)
 
-plt.xlabel('Normal Traffic Rate (λn)')
-plt.ylabel('Average Packet Delay (s)')
-plt.title('Destruction Attacks: Packets Removed Before Service')
-plt.legend()
-plt.grid(True)
-filename = f"destroy_no_service_plot_reps{replications}.png"
-plt.savefig(filename)
+    # Plotting
+    plt.figure(figsize=(12, 8))
+    colors = ['b', 'g', 'r', 'y', 'm']
+    for idx, a in enumerate(attack_effectiveness_values):
+        plt.plot(normal_traffic_rates, theoretic_results[a], color=colors[idx], linestyle='-', 
+                 label=f'Theoretic delay (destroy) a={a}')
+        plt.scatter(normal_traffic_rates, simulation_results[a], color=colors[idx], marker='x', s=100, 
+                    label=f'Simulated delay (destroy) a={a}')
 
-print(f"\nPlot saved as {filename}")
+    plt.xlabel('Normal Traffic Rate (λn)')
+    plt.ylabel('Average Packet Delay (s)')
+    plt.title('Destruction Attacks: Packets Removed Before Service')
+    plt.legend()
+    plt.grid(True)
+    filename = f"destroy_no_service_plot_reps{replications}.png"
+    plt.savefig(os.path.join(script_dir, filename))
+
+    print(f"\nPlot saved as {filename}")
