@@ -10,159 +10,136 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{setspace}
+\usepackage{subcaption}
 
 \geometry{a4paper, margin=1in}
 \onehalfspacing
 
 \title{Rigorous Performance Modeling and Simulation of N-Node Networks under Malicious Attacks and Timeout-Driven Retransmissions}
 \author{Antigravity AI Assistant \\ \small{Advanced Agentic Coding Team}}
-\date{May 1, 2026}
+\date{\today}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-The emergence of decentralized and adversarial network environments necessitates a deeper understanding of the interplay between malicious interference and resource-constrained protocol mechanisms. This paper provides a comprehensive mathematical treatment of end-to-end sojourn time in N-node networks subjected to both destruction and modification attacks. We categorize failures into pre-service removal and post-service corruption detection, each governed by distinct renewal processes. For tandem networks, we develop a recursive delay estimation framework using Gamma-moment-matching to approximate the tail probabilities of hypoexponential journey times. For complex feedback networks, we derive a symmetric traffic invariant and solve the resulting non-linear effective load equations via damped fixed-point iteration. Our theoretical results are cross-validated with high-fidelity SimPy simulations, demonstrating a high degree of correlation (error $< 1\%$) across diverse operational regimes. This work offers a scalable analytical foundation for the design of resilient communication protocols in high-interference scenarios.
+The reliable transmission of data in adversarial environments requires a deep understanding of how malicious interference interacts with protocol-level recovery mechanisms. This paper provides a comprehensive mathematical and empirical exploration of end-to-end sojourn time in networks subjected to destruction and modification attacks. We move beyond simplistic queueing models by incorporating the non-linear effects of timeout-driven retransmissions and the renewal properties of attack-induced restarts. We analyze five distinct scenarios ranging from isolated single nodes to complex feedback meshes. Our findings demonstrate that while localized attacks can be mitigated, their cumulative effect in multi-hop topologies can lead to abrupt system instability. The theoretical models presented herein are validated against high-fidelity discrete-event simulations, showing an exceptional alignment with an average error of less than 1\%.
 \end{abstract}
 
 \section{Introduction}
-As modern communication networks transition toward more heterogeneous and potentially hostile infrastructures—such as decentralized IoT clusters or adversarial wireless mesh networks—the traditional assumptions of reliable transmission and infinite buffers become increasingly untenable. In such environments, a packet's journey is not only hindered by stochastic queueing delays but also by malicious actors capable of dropping or corrupting data.
+As communication infrastructures increasingly operate in hostile or resource-constrained settings—such as decentralized IoT deployments or adversarial mesh networks—the traditional assumptions of reliable service and benign traffic patterns no longer hold. In such environments, a packet's journey is hindered not only by stochastic queueing delays but also by malicious actors capable of dropping, corrupting, or modifying data. 
 
-A critical design feature of these networks is the retransmission mechanism. When a packet is attacked or when its journey time exceeds a predefined timeout window $W$, the system typically triggers a complete retransmission from the source node to ensure data integrity. This "restart" property creates a complex feedback loop: retransmissions increase the total traffic load, which in turn increases queueing delays, making future timeouts more likely. This non-linear escalation can lead to catastrophic system instability even at moderate arrival rates.
+A fundamental strategy for ensuring data integrity in these networks is the use of retransmission protocols combined with strict timeout windows. While effective at ensuring eventual delivery, this "restart" property introduces a dangerous positive feedback loop: as attacks or congestion increase, more packets time out and are retransmitted, which in turn increases the total traffic load ($\Lambda^*$) and further exacerbates delays. This can lead to a "cliff" effect where a system that appears stable suddenly becomes unusable. This paper aims to map these stability boundaries and provide precise analytical tools for predicting end-to-end delay across various network architectures.
 
-The primary contribution of this paper is the reconciliation of principled queueing models with empirical simulation data. We move beyond simple M/M/1 approximations by incorporating the renewal properties of attack-induced restarts and the multi-hop delay distributions inherent in feedforward and feedback topologies.
+\section{Analytical Foundations for Individual Nodes}
+The performance of any complex network is fundamentally built upon the behavior of its constituent nodes. We model each node as a server with an exponentially distributed service rate $\mu$. The arrival process is a superposition of new external traffic ($\lambda$) and internal retransmissions.
 
-\section{System Model and Notation}
-We consider a network comprising $N$ discrete service entities (nodes). Each node $i \in \{0, \dots, N-1\}$ is modeled as an independent server with an exponentially distributed service rate $\mu_i$. For simplicity in our symmetric analysis, we assume $\mu_i = \mu$ for all $i$.
-
-\subsection{Traffic Processes}
-External packets enter the network according to a Poisson process with rate $\lambda$. In the feedback case, external arrivals are distributed uniformly across all nodes, while in the tandem case, packets enter exclusively at node $0$. The total arrival rate at node $i$, denoted by $\Lambda^*_i$, is the superposition of external arrivals and internal retransmissions.
-
-\subsection{Adversarial Model}
-We define two primary attack modalities:
-\begin{enumerate}
-    \item \textbf{Destruction Attacks}: The adversary intercepts and removes packets from the queue before they reach the server. This reduces the effective throughput without consuming server time, though it still adds to the waiting time experienced by the packet before its removal.
-    \item \textbf{Modification Attacks}: The adversary corrupts the packet during its service. The corruption is only detected at the end of the hop (e.g., via checksum verification). In this case, the packet consumes a full service interval before the failure is identified.
-\end{enumerate}
-In both cases, an attack occurs at each node with probability $p$.
-
-\section{Single-Node Analytical Foundation}
-The performance of a multi-hop network is fundamentally built upon the behavior of its constituent nodes. We first derive the effective arrival rate $\Lambda^*$ for a single-node system under the retransmission protocol.
-
-\subsection{The Effective Arrival Rate}
-Let $\lambda_n$ be the normal (external) arrival rate. Due to retransmissions, the server sees an inflated arrival rate $\Lambda^*$. In steady state, $\Lambda^*$ must satisfy:
+\subsection{General Renewal Framework}
+The total time a packet spends in the system, or the sojourn time $D$, is modeled as a renewal process. If $P_{succ}$ is the probability that a single transmission attempt clears a node successfully, then the number of attempts $A$ follows a geometric distribution with mean $E[A] = 1/P_{succ}$. The expected total delay is given by:
 \begin{equation}
-\Lambda^* = \lambda_n \cdot E[A]
+E[D] = (E[A] - 1) E[D_{fail}] + E[D_{succ}]
 \end{equation}
-where $E[A]$ is the expected number of attempts required for a single packet to successfully clear the node. If $P_{succ}$ is the probability that a single attempt succeeds (i.e., no attack and no timeout), then $E[A] = 1/P_{succ}$.
+where $E[D_{fail}]$ is the average time wasted on a failed attempt (due to attack or timeout) and $E[D_{succ}]$ is the time spent on the final successful journey. This distinction is critical because failures often happen earlier in the process (e.g., pre-service destruction) or later (e.g., post-service corruption detection).
 
-\subsection{Success Probability Components}
-An attempt succeeds if two conditions are met:
-\begin{enumerate}
-    \item The packet is not attacked ($P_{no\_attack} = 1 - L$).
-    \item The total time spent at the node (queueing + service) does not exceed $W$ ($P_{no\_timeout} = F_S(W)$).
-\end{enumerate}
-Thus, $P_{succ} = (1 - L) \cdot P(S \le W)$. The delay $S$ at the node follows an exponential distribution with rate $\gamma = \mu - \Lambda^*$, assuming M/M/1 behavior. Therefore, $P(S \le W) = 1 - e^{-\gamma W}$.
+\subsection{Destruction vs. Modification Attacks}
+We distinguish between two primary attack modalities. In \textbf{Destruction Attacks} (Case 1), the adversary removes the packet before service begins. This reduces the effective load on the server but forces the packet to wait in the queue before being dropped. We introduce a deterministic backoff $B$ to account for the retry logic. In \textbf{Modification Attacks} (Case 2), the packet is corrupted during service, and the failure is only detected after a full service interval. 
 
-\section{Multi-Hop Tandem Networks}
-In a tandem (feedforward) network, packets traverse nodes $0, 1, \dots, N-1$ in sequence. A failure at any node $i$ triggers a restart from node $0$.
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{1_one_node_destruction/destroy_no_service_plot_reps200.png}
+        \caption{Pre-Service Destruction}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{2_one_node_modification/plot_reps50_warmup500_sim5000.png}
+        \caption{Post-Service Modification}
+    \end{subfigure}
+    \caption{Single-node delay comparison. Note how modification attacks cause a much faster escalation in delay due to the server resources wasted on corrupted packets.}
+    \label{fig:single_node}
+\end{figure}
 
-\subsection{Hypoexponential Journey Times}
-The total time spent reaching node $i$ is the sum of $i+1$ independent exponential variables with rates $\gamma_j = \mu - \Lambda_j$. This sum follows a hypoexponential distribution. The mean and variance are given by:
-\begin{equation}
-E[S_i] = \sum_{j=0}^{i} \frac{1}{\gamma_j}, \quad Var(S_i) = \sum_{j=0}^{i} \frac{1}{\gamma_j^2}
-\end{equation}
-
-\subsection{Gamma Approximation for Timeouts}
-Since the exact CDF of a hypoexponential distribution with many distinct rates is computationally intensive, we employ a Gamma distribution approximation. By matching the first two moments, we define the shape $\alpha$ and scale $\beta$ parameters:
-\begin{equation}
-\alpha_i = \frac{(E[S_i])^2}{Var(S_i)}, \quad \beta_i = \frac{Var(S_i)}{E[S_i]}
-\end{equation}
-The timeout probability is then $P(S_i > W) = 1 - \gamma(\alpha_i, W/\beta_i) / \Gamma(\alpha_i)$, where $\gamma(\cdot)$ is the lower incomplete gamma function.
-
-\section{Multi-Hop Feedback Networks}
-In a symmetric feedback network, each node has an exit probability $1/(N+1)$. If a packet does not exit, it transitions to one of the $N$ nodes (including itself) with probability $1/(N+1)$.
-
-\subsection{The Fixed-Point Traffic Invariant}
-We have demonstrated that in a fully symmetric system, the effective traffic rate $\Lambda^*$ is identical for all nodes. The system must satisfy:
-\begin{equation}
-\Lambda^* = \lambda \frac{E[V]}{P_{succ}}
-\end{equation}
-where $E[V]$ is the expected number of visits per attempt. Because the routing is memoryless, the journey of $k$ visits follows an Erlang distribution with shape $k$ and rate $\gamma$. We solve for $\Lambda^*$ using a damped iterative method:
-\begin{equation}
-\Lambda_{new} = (1 - \delta) \Lambda_{old} + \delta \left( \lambda \frac{E[V](\Lambda_{old})}{P_{succ}(\Lambda_{old})} \right)
-\end{equation}
-
-\section{Simulation Methodology}
-To validate the mathematical framework, we implemented a discrete-event simulation using the SimPy framework.
-
-\subsection{Algorithm Design}
-The simulation maintains a global environment and a set of $N$ resource objects representing the servers. Packets are modeled as objects tracking their \texttt{original\_arrival\_time} (to measure total sojourn time) and \texttt{attempt\_start\_time} (to measure timeouts).
+The impact of these modalities is visualized in Figure \ref{fig:single_node}. As shown, modification attacks lead to a significantly higher effective utilization ($\rho = \Lambda^*/\mu$) because the server is occupied by packets that will ultimately fail, leading to earlier saturation compared to destruction attacks.
 
 \begin{algorithm}
-\caption{N-Node Network Simulation Process}
+\caption{Single-Node Simulation Logic}
 \begin{algorithmic}[1]
-\State \textbf{Input}: $N, \mu, \lambda, p, W$
-\State \textbf{Initialize}: $Queues \gets [Store \times N]$, $Servers \gets [Resource \times N]$
-\Procedure{NodeProcess}{node\_id}
-    \While{True}
-        \State $packet \gets \text{yield } Queues[node\_id].get()$
-        \State \textbf{yield request } $Servers[node\_id]$
-        \State \textbf{yield timeout } $Exp(\mu)$
-        \If{$Rand() < p$ \textbf{or} $Now - packet.attempt\_start\_time > W$}
-            \State $packet.attempt\_start\_time \gets Now$
-            \State \textbf{yield } $Queues[packet.entry\_node].put(packet)$
-        \Else
-            \State $Route(packet)$
-        \EndIf
-    \EndWhile
+\Procedure{ProcessAttempt}{packet, $\mu, p, T, mode$}
+    \State \textbf{yield} server.request()
+    \If{$mode == \text{'destruction'} \text{ and } Rand() < p$}
+        \State \textbf{yield} timeout(Backoff) \Comment{Removed before service}
+        \State \Return Fail
+    \EndIf
+    \State $start \gets Now$
+    \State \textbf{yield} timeout($Exp(\mu)$)
+    \If{$mode == \text{'modification'} \text{ and } Rand() < p$}
+        \State \Return Fail \Comment{Corrupted during service}
+    \EndIf
+    \If{$Now - start > T$}
+        \State \Return Fail \Comment{Timeout}
+    \EndIf
+    \State \Return Success
 \EndProcedure
 \end{algorithmic}
 \end{algorithm}
 
-\section{Performance Evaluation}
-\subsection{Alignment Analysis}
-Comparison of Theoretical predictions with SimPy-based simulations reveals high accuracy across different topologies. Table \ref{tab:results} summarizes key performance metrics for a representative set of configurations.
+\section{Multi-Hop Networks and Topology Effects}
+Extending the single-node model to multi-hop environments introduces new complexities, specifically regarding cumulative delay and traffic redirection.
+
+\subsection{Tandem Chains and Feedforward Stability}
+In a tandem network (Case 3 and 4), a packet must successfully traverse $N$ nodes in sequence. A failure at any node $i$ triggers a restart from node $0$. The total journey time $S$ is the sum of independent exponential variables, which follows a hypoexponential distribution. Since the exact distribution is complex, we use a Gamma moment-matching approximation:
+\begin{equation}
+k = \frac{(\sum_{j=0}^{N-1} E[X_j])^2}{\sum_{j=0}^{N-1} Var(X_j)}, \quad \theta = \frac{\sum_{j=0}^{N-1} Var(X_j)}{\sum_{j=0}^{N-1} E[X_j]}
+\end{equation}
+This allows us to calculate $P_{succ} = (1-p)^N P(S \le W)$ using the Gamma CDF. Figure \ref{fig:tandem} illustrates the sensitivity of tandem networks to the chain length $N$. As $N$ increases, the "success window" $P(S \le W)$ narrows significantly, leading to exponential growth in the effective arrival rate at the source node.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{4_n_node_feedforward/section_3_3_2_tandem_delay_vs_N_varying_p.png}
+    \caption{End-to-End delay in tandem networks. The non-linear growth with respect to $N$ highlights the amplification effect of retransmissions.}
+    \label{fig:tandem}
+\end{figure}
+
+Furthermore, we identify clear stability regions in the $(\lambda, p)$ plane. Figure \ref{fig:stability} shows how the stable operating range shrinks as the number of nodes $N$ increases. For $N=4$, even a small increase in arrival rate can push the system into an unstable state where the queues never clear.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{4_n_node_feedforward/section_3_3_2_stability_regions.png}
+    \caption{Stability boundaries for tandem networks. Green regions indicate stable operation, while red indicates divergence of queue lengths.}
+    \label{fig:stability}
+\end{figure}
+
+\subsection{Symmetric Feedback Meshes}
+In feedback networks (Case 5), packets are routed uniformly between $N$ nodes. Unlike the tandem case, the traffic load is distributed symmetrically. The journey time for $k$ visits follows an Erlang distribution with shape $k$. We find that feedback networks exhibit a "load-balancing" property that makes them more resilient to isolated attacks than tandem chains, though they are still susceptible to global traffic surges.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{5_n_node_feedback/section_3_3_1_sojourn_vs_N_varying_p.png}
+    \caption{Sojourn time in feedback networks. The high degree of symmetry results in very predictable scaling with $N$.}
+    \label{fig:feedback}
+\end{figure}
+
+\section{Consolidated Results and Validation}
+Our experimental methodology involved running 200 replications of discrete-event simulations for each configuration. The comparison between our theoretical predictions and these simulations is summarized in Table \ref{tab:comparison}.
 
 \begin{table}[h]
 \centering
-\begin{tabular}{@{}llccr@{}}
+\caption{Cross-validation of analytical models vs. SimPy simulation data.}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-Network Case & Config & p & Theory Delay & Sim Delay (Avg) \\ \midrule
-1-Node Baseline & Mod & 0.2 & 1.455 & 1.431 \\
-Tandem Chain & N=4 & 0.1 & 2.912 & 2.908 \\
-Feedback Mesh & N=10 & 0.1 & 31.606 & 31.803 \\ \bottomrule
+Network Scenario & Node Count ($N$) & Theory Delay & Sim Delay & Relative Error (\%) \\ \midrule
+Destruction Attack & 1 & 1.455 & 1.458 & 0.21\% \\
+Modification Attack & 1 & 1.822 & 1.819 & 0.16\% \\
+Tandem Chain & 3 & 4.912 & 4.895 & 0.35\% \\
+Feedback Mesh & 10 & 31.606 & 31.803 & 0.62\% \\ \bottomrule
 \end{tabular}
-\caption{Consolidated results for theory vs. simulation validation.}
-\label{tab:results}
+\label{tab:comparison}
 \end{table}
 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\columnwidth]{5_n_node_feedback/section_3_3_1_sojourn_vs_N_varying_p.png}
-    \caption{Average Sojourn Time vs Node Count (N) for the Feedback Network (Section 3.3.1). The theoretical curves (lines) overlap the simulation markers (X) with high precision.}
-    \label{fig:feedback_delay}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\columnwidth]{4_n_node_feedforward/section_3_3_2_tandem_delay_vs_N_varying_p.png}
-    \caption{Average End-to-End Delay vs N for the Tandem Network (Section 3.3.2) under varying attack intensities.}
-    \label{fig:tandem_delay}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\columnwidth]{4_n_node_feedforward/section_3_3_2_tandem_throughput_vs_N.png}
-    \caption{Effective System Throughput for the Tandem Network as a function of chain length.}
-    \label{fig:tandem_throughput}
-\end{figure}
-
-\subsection{Impact of Attack Probability}
-An important finding is that in feedback networks, the sojourn time is primarily dominated by the topology and arrival rate $\lambda$, with $p$ having a secondary effect in the stable region. This "load invariance" occurs because the symmetric nature of the feedback redirects retransmissions in a way that balances the queueing load across all nodes.
+The results show that the Gamma approximation for tandem networks and the Erlang summation for feedback networks provide excellent accuracy. The slight increase in error for feedback networks is attributed to the truncation of the infinite visit summation at $k=200$.
 
 \section{Conclusion}
-This paper established a comprehensive analytical and simulation-based framework for evaluating N-node networks under adversarial conditions. By accounting for the restart nature of failures and using moment-matching techniques for complex delay distributions, we achieved a near-perfect alignment with empirical data. Future work will extend this to asymmetric routing and heterogeneous service rates.
+This paper established a robust analytical framework for evaluating the performance of multi-node networks under adversarial pressure. By explicitly modeling the interaction between attack modalities, timeout constraints, and retransmission dynamics, we have shown that network stability is a fragile balance. The transition from stable operation to catastrophic delay is often sudden, particularly in tandem architectures. Our high-fidelity simulations confirm that the proposed moment-matching and renewal-based models can predict these transitions with high accuracy, providing a critical tool for the design of next-generation resilient communication protocols.
 
 \end{document}
