@@ -12,9 +12,9 @@ attack_effectiveness_values = [0.2, 0.5, 0.8]
 backoff_avg = 0.03 # Average of uniform(0.01, 0.05)
 
 # --- SIMULATION PARAMETERS ---
-replications = 50
-warmup_period = 500
-sim_duration = 5000
+replications = 200
+warmup_period = 2000
+sim_duration = 20000
 # Removed global packet_delays to allow parallelization
 
 # --- THEORETICAL MODEL (Unchanged) ---
@@ -60,7 +60,7 @@ def calculate_theoretic_delay_final(lambda_n, p):
     # Total delay = E[A] * E[D_attempt] + (E[A] - 1) * backoff
     # Note: every failure (attack or timeout) triggers a backoff before re-entry
     e_a = Lambda_star / lambda_n
-    return e_a * E_D_attempt + (e_a - 1) * 0.03
+    return e_a * E_D_attempt + (e_a - 1) * backoff_avg
 
 # --- CORRECTED SIMULATION MODEL ---
 
