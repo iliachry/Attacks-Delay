@@ -13,7 +13,7 @@ attack_effectiveness_values = [0.2, 0.5, 0.8]
 
 replications = 50
 warmup_period = 500
-sim_duration = 2000
+sim_duration = 5000
 
 def calculate_theoretic_delay(lambda_n, p):
     """Robust fixed-point iteration for one-node delay with retransmissions."""
@@ -59,7 +59,7 @@ class Packet:
     def __init__(self, identifier, arrival_time):
         self.identifier = identifier
         self.original_arrival_time = arrival_time
-        self.current_arrival_time = arrival_time
+        self.attempt_start_time = arrival_time
         self.corrupted = False
 
 def packet_generator(env, queue, lambda_n):
@@ -68,6 +68,7 @@ def packet_generator(env, queue, lambda_n):
     while True:
         yield env.timeout(random.expovariate(lambda_n))
         packet = Packet(f"Packet_{packet_id}", env.now)
+        packet.attempt_start_time = env.now
         yield queue.put(packet)
         packet_id += 1
 
@@ -79,8 +80,7 @@ def server_process(env, server, queue, p):
         with server.request() as req:
             yield req
             
-            # Start of attempt
-            packet.attempt_start_time = env.now
+            # Note: attempt_start_time is ALREADY set when packet entered the queue
             
             # Discovery happens AFTER service
             yield env.timeout(random.expovariate(mu)) # Service time
@@ -88,7 +88,7 @@ def server_process(env, server, queue, p):
             # Check for attack or timeout
             if random.random() < p or (env.now - packet.attempt_start_time) > T:
                 # Retransmit: put back in queue
-                packet.current_arrival_time = env.now
+                packet.attempt_start_time = env.now # Reset timer for next attempt
                 yield queue.put(packet)
             else:
                 # Success: record total end-to-end delay
@@ -143,7 +143,7 @@ for a in attack_effectiveness_values:
     print(f"\nRunning simulations for attack effectiveness a={a}...")
     simulated_delays = []
     for ln in normal_traffic_rates:
-        print(f"  Simulating with λn={ln:.2f}...")
+        print(f"  Simulating with lambda_n={ln:.2f}...")
         # Check if the system is theoretically unstable first
         if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
             simulated_delays.append(np.inf)

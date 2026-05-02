@@ -13,7 +13,7 @@ attack_effectiveness_values = [0.2, 0.5, 0.8]
 # --- SIMULATION PARAMETERS ---
 replications = 50
 warmup_period = 500
-sim_duration = 2000
+sim_duration = 5000
 
 packet_delays = []
 
@@ -67,7 +67,7 @@ class Packet:
     def __init__(self, identifier, arrival_time):
         self.identifier = identifier
         self.original_arrival_time = arrival_time
-        self.current_arrival_time = arrival_time
+        self.attempt_start_time = arrival_time  # Tracks the start of the current attempt
 
 def packet_generator(env, queue, lambda_n):
     """Generates packets with a Poisson arrival process."""
@@ -75,6 +75,7 @@ def packet_generator(env, queue, lambda_n):
     while True:
         yield env.timeout(random.expovariate(lambda_n))
         packet = Packet(f"Packet_{packet_id}", env.now)
+        packet.attempt_start_time = env.now # Initial attempt start
         yield queue.put(packet)
         packet_id += 1
 
@@ -86,21 +87,20 @@ def server_process(env, server, queue, p):
         with server.request() as req:
             yield req
             
-            # Start of attempt
-            packet.attempt_start_time = env.now
+            # Note: attempt_start_time is ALREADY set when packet entered the queue
             
             # Pre-Service Attack check
             if random.random() < p:
                 # Destruction: no service time consumed
-                packet.current_arrival_time = env.now
+                packet.attempt_start_time = env.now # Reset timer for next attempt
                 yield queue.put(packet)
             else:
                 # Service time consumed if not destroyed
                 yield env.timeout(random.expovariate(mu))
                 
-                # Check for timeout
+                # Check for timeout (total time in node)
                 if (env.now - packet.attempt_start_time) > T:
-                    packet.current_arrival_time = env.now
+                    packet.attempt_start_time = env.now # Reset timer for next attempt
                     yield queue.put(packet)
                 else:
                     # Success
@@ -148,7 +148,7 @@ for a in attack_effectiveness_values:
     print(f"\nRunning simulations for attack effectiveness a={a}...")
     simulated_delays = []
     for ln in normal_traffic_rates:
-        print(f"  Simulating with λn={ln:.2f}...")
+        print(f"  Simulating with lambda_n={ln:.2f}...")
         if theoretic_results[a][list(normal_traffic_rates).index(ln)] == np.inf:
             simulated_delays.append(np.inf)
         else:
