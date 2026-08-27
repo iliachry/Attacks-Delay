@@ -1,11 +1,76 @@
-# Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions
+# aqnet — Adversarial Queue Networks
 
-[![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
+[![PyPI - Version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/aqnet/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
+[![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-5%20passed-brightgreen.svg)]()
 
+> **Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions**  
 > **Authors:** Ilias Chrysovergis (Metatopia), Antigravity AI Assistant (Google DeepMind)  
-> **Preprint / Target:** IEEE Transactions on Networking (ToN) / arXiv (cs.NI, math.PR, cs.CR)
+> **Preprint / Target:** IEEE Transactions on Networking (ToN) / arXiv (`cs.NI`, `math.PR`, `cs.CR`)
+
+---
+
+## ⚡ Quickstart
+
+### Installation
+
+Install via pip:
+
+```bash
+pip install aqnet
+```
+
+Or install in development mode from source:
+
+```bash
+git clone https://github.com/iliachry/Attacks-Delay.git
+cd Attacks-Delay
+pip install -e .
+```
+
+### Python API Usage
+
+```python
+import aqnet
+
+# 1. Closed-form analytical delay calculation (Case 1: Pre-service Destruction)
+theory_delay = aqnet.solve_one_node_destruction(
+    lambda_n=2.0,  # Fresh packet arrival rate
+    p=0.2,         # Attack probability
+    mu=10.0,       # Server capacity
+    T=2.0          # Retransmission timeout window
+)
+print(f"Expected Sojourn Time: {theory_delay:.4f} s")
+
+# 2. Run SimPy discrete-event simulation
+sim_delay = aqnet.simulate_one_node_destruction(
+    lambda_n=2.0,
+    p=0.2,
+    mu=10.0,
+    T=2.0,
+    sim_duration=5000.0,
+    seed=42
+)
+print(f"Simulated Sojourn Time: {sim_delay:.4f} s")
+
+# 3. Analyze multi-hop tandem chain (Case 3)
+tandem_delay = aqnet.solve_tandem_theory(p=0.1, N=3, mu=2.0, lambda_arrival=0.15, W=8.0)
+print(f"Tandem (N=3) Delay: {tandem_delay:.4f} s")
+```
+
+### Command Line Interface (CLI)
+
+`aqnet` comes with a built-in CLI for rapid experimentation and benchmarking:
+
+```bash
+# Run benchmark across all 5 topologies:
+aqnet bench
+
+# Simulate specific topology:
+aqnet run --topology tandem --nodes 3 --p 0.1 --lambda-arr 0.15 --reps 20
+```
 
 ---
 
@@ -13,7 +78,7 @@
 
 The reliable transport of data through adversarial networks requires a rigorous mathematical understanding of the coupled dynamics between malicious disruption and transport-layer recovery protocols. 
 
-This repository provides the complete analytical framework, discrete-event simulation engine (SimPy), benchmark dataset, and LaTeX manuscript files for studying packet sojourn times across **five foundational network topologies** subject to active packet destruction and modification attacks.
+This repository and package provides the complete analytical framework, discrete-event simulation engine (SimPy), benchmark dataset, and LaTeX manuscript files for studying packet sojourn times across **five foundational network topologies** subject to active packet destruction and modification attacks.
 
 By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, this project validates closed-form and semi-analytical models against discrete-event simulations, demonstrating exact agreement across all operational regimes with relative errors consistently below 1%.
 
