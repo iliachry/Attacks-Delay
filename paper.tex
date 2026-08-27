@@ -51,9 +51,9 @@ The reliable transport of data through adversarial networks requires a rigorous 
 \end{figure}
 
 \section{Introduction}
-Modern distributed architectures—ranging from wireless sensor swarms and Internet of Things (IoT) deployments to multi-hop tactical communications—frequently operate in hostile environments where communication links are unreliable and actively contested by malicious adversaries. Traditional queueing frameworks (such as Jackson networks or standard $M/M/1$ queues) assume benign stochastic environments and complete packet conservation. However, in adversarial settings, packets are subject to packet dropping (destruction), payload corruption (modification), and delays that violate protocol timeout thresholds.
+Modern distributed architectures—ranging from wireless sensor swarms and Internet of Things (IoT) deployments to multi-hop tactical communications—frequently operate in hostile environments where communication links are unreliable and actively contested by malicious adversaries \cite{wood2002denial, pelechrinis2011denial}. Traditional queueing frameworks (such as Jackson networks \cite{jackson1957networks} or standard $M/M/1$ queues \cite{kleinrock1975queueing}) assume benign stochastic environments and complete packet conservation. However, in adversarial settings, packets are subject to packet dropping (destruction), payload corruption (modification), and delays that violate protocol timeout thresholds.
 
-To guarantee eventual packet delivery, transport protocols employ automatic repeat request (ARQ) mechanisms governed by timeout deadlines. While timeout-driven retransmissions ensure reliable delivery, they introduce a powerful \textit{positive feedback loop}:
+To guarantee eventual packet delivery, transport protocols employ automatic repeat request (ARQ) mechanisms governed by timeout deadlines \cite{fall1996simulation}. While timeout-driven retransmissions ensure reliable delivery, they introduce a powerful \textit{positive feedback loop}:
 \begin{align*}
 \text{Attacks / Delay} &\implies \text{Timeouts / Retransmissions} \\
 &\implies \text{Increased Total Traffic } \Lambda^* \\
@@ -435,6 +435,41 @@ As shown in Table \ref{tab:validation}, the theoretical predictions align with t
 
 \section{Conclusion}
 This paper presented a rigorous and comprehensive mathematical theory for evaluating packet sojourn time and network stability across five distinct topologies under active adversarial attacks and timeout-driven retransmissions. By formulating exact renewal-reward equations, multi-hop hypoexponential moment-matching, stage-wise traffic attenuation, and Erlang visit summations, we demonstrated that retransmissions induce non-linear traffic amplification loops that fundamentally govern system capacity. High-fidelity discrete-event simulations across all five cases confirmed the exceptional accuracy of the theoretical models.
+
+\begin{thebibliography}{99}
+\bibitem{kleinrock1975queueing}
+L.~Kleinrock, \textit{Queueing Systems, Volume 1: Theory}, Wiley-Interscience, New York, 1975.
+
+\bibitem{kleinrock1976computer}
+L.~Kleinrock, \textit{Queueing Systems, Volume 2: Computer Applications}, John Wiley \& Sons, New York, 1976.
+
+\bibitem{ross1996stochastic}
+S.~M.~Ross, \textit{Stochastic Processes}, 2nd~ed., John Wiley \& Sons, New York, 1996.
+
+\bibitem{jackson1957networks}
+J.~R.~Jackson, ``Networks of waiting lines,'' \textit{Operations Research}, vol.~5, no.~4, pp.~518--521, 1957.
+
+\bibitem{burke1956output}
+P.~J.~Burke, ``The output of a queuing system,'' \textit{Operations Research}, vol.~4, no.~6, pp.~699--704, 1956.
+
+\bibitem{cox1955use}
+D.~R.~Cox, ``A use of complex probabilities in the theory of stochastic processes,'' \textit{Mathematical Proceedings of the Cambridge Philosophical Society}, vol.~51, no.~2, pp.~313--319, 1955.
+
+\bibitem{altiok1985approximate}
+T.~Altiok, ``On the phase-type approximations of general distributions,'' \textit{IIE Transactions}, vol.~17, no.~2, pp.~110--116, 1985.
+
+\bibitem{pelechrinis2011denial}
+K.~Pelechrinis, M.~Iliofotou, and S.~V.~Krishnamurthy, ``Denial of service attacks in wireless networks: The case of jammers,'' \textit{IEEE Communications Surveys \& Tutorials}, vol.~13, no.~2, pp.~245--257, 2011.
+
+\bibitem{wood2002denial}
+A.~D.~Wood and J.~A.~Stankovic, ``Denial of service in sensor networks,'' \textit{IEEE Computer}, vol.~35, no.~10, pp.~54--62, 2002.
+
+\bibitem{fall1996simulation}
+K.~Fall and S.~Floyd, ``Simulation-based comparisons of Tahoe, Reno, and SACK TCP,'' \textit{ACM SIGCOMM Computer Communication Review}, vol.~26, no.~3, pp.~5--21, 1996.
+
+\bibitem{matloff2008introduction}
+N.~Matloff, ``Introduction to discrete-event simulation and the SimPy language,'' \textit{Dept. of Computer Science, University of California, Davis}, 2008.
+\end{thebibliography}
 
 \section*{About the Authors}
 \noindent\textbf{Ilias Chrysovergis} is a researcher and system architect at Metatopia. His research interests encompass distributed systems, communication network resilience, stochastic queueing theory, and security protocol engineering in adversarial environments. E-mail: \texttt{iliachry@gmail.com}.

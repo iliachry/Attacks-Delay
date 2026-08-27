@@ -148,6 +148,28 @@ if __name__ == '__main__':
         simulation_results[a] = simulated_delays
         print("...done.")
 
+    # Save structured results to JSON
+    import os
+    import json
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    all_data = []
+    for a in attack_effectiveness_values:
+        for i, ln in enumerate(normal_traffic_rates):
+            th = theoretic_results[a][i]
+            sim = simulation_results[a][i]
+            gap = abs(th - sim) if th != np.inf and sim != np.inf else 0.0
+            rel_err = (gap / th * 100.0) if th not in (0, np.inf) else 0.0
+            all_data.append({
+                "a": float(a),
+                "lambda_n": float(ln),
+                "theory": float(th),
+                "sim": float(sim),
+                "gap": float(gap),
+                "rel_error_pct": float(rel_err)
+            })
+    with open(os.path.join(script_dir, 'results_modification.json'), 'w') as f:
+        json.dump(all_data, f, indent=4)
+
     # Plotting the results
     plt.figure(figsize=(12, 8))
     colors = ['b', 'g', 'r', 'y', 'm']
@@ -160,9 +182,7 @@ if __name__ == '__main__':
     plt.title('Comparison of Theoretic and Simulated Delay (with Multiple Replications)')
     plt.legend()
     plt.grid(True)
-    import os
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     filename = f"plot_reps{replications}_warmup{warmup_period}_sim{sim_duration}.png"
-    plt.savefig(os.path.join(script_dir, filename))
+    plt.savefig(os.path.join(script_dir, filename), dpi=300)
 
-    print(f"\nPlot saved as {filename}")
+    print(f"\nPlot saved as {filename} and results saved to results_modification.json")
