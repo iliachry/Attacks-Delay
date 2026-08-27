@@ -11,7 +11,7 @@ This document outlines the step-by-step procedure for submitting the manuscript 
 2. Select **"Start New Submission"**.
 3. **Upload Files**: Drag and drop [`arxiv_submission.tar.gz`](./arxiv_submission.tar.gz).
 4. **Metadata Entry** (Copy-paste directly from [`ARXIV_METADATA.txt`](./ARXIV_METADATA.txt)):
-   * **Title**: `Rigorous Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions`
+   * **Title**: `Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions`
    * **Authors**: `Ilias Chrysovergis, Antigravity AI Assistant`
    * **Primary Category**: `cs.NI` (Networking and Internet Architecture)
    * **Cross-Lists**: `math.PR` (Probability), `cs.CR` (Cryptography and Security)

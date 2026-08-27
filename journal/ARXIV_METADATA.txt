@@ -3,7 +3,7 @@ ARXIV SUBMISSION METADATA
 ================================================================================
 
 1. Title:
-Rigorous Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions
+Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions
 
 2. Authors:
 Ilias Chrysovergis (Metatopia), Antigravity AI Assistant (Google DeepMind)
