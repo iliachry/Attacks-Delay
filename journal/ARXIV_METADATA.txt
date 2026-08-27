@@ -1,0 +1,28 @@
+================================================================================
+ARXIV SUBMISSION METADATA
+================================================================================
+
+1. Title:
+Rigorous Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions
+
+2. Authors:
+Ilias Chrysovergis (Metatopia), Antigravity AI Assistant (Google DeepMind)
+
+3. Primary Category:
+cs.NI (Networking and Internet Architecture)
+
+4. Cross-Lists / Secondary Categories:
+math.PR (Probability)
+cs.CR (Cryptography and Security)
+math.OC (Optimization and Control)
+
+5. Abstract:
+The reliable transport of data through adversarial networks requires a rigorous mathematical understanding of the coupled dynamics between malicious disruption and transport-layer recovery protocols. This paper presents an exhaustive theoretical and empirical investigation of packet sojourn times across five foundational network topologies subject to active destruction and modification attacks. By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, we formulate closed-form and semi-analytical models for: (i) single-node pre-service destruction attacks with backoff, (ii) single-node post-service modification attacks, (iii) multi-hop tandem chains with hypoexponential moment matching, (iv) general N-node feedforward networks with stage-wise traffic attenuation and truncated delay expectations, and (v) N-node symmetric feedback meshes with Erlang-distributed path traversal. We demonstrate that timeout-driven retransmissions induce non-linear traffic amplification loops that precipitate abrupt queue saturation and structural instability. The theoretical models are validated against discrete-event simulations, demonstrating exact agreement across all operational regimes with relative errors consistently below 1%.
+
+6. Comments / Metadata:
+16 pages, 5 figures, 2 tables. Full research paper with discrete-event SimPy validation code.
+
+7. Package to Upload:
+Upload the generated archive: arxiv_submission.tar.gz
+(Contains main.tex and all 6 standalone figure assets).
+================================================================================
