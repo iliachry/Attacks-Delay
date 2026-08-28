@@ -22,11 +22,11 @@
 
 \title{Adversarial Delay Amplification and Instability in Multi-Node Networks Under Timeout-Driven Retransmissions}
 
-\author{Ilias~Chrysovergis~and~Antigravity~AI~Assistant%
-\thanks{I.~Chrysovergis is with Metatopia (e-mail: iliachry@gmail.com). Antigravity AI Assistant is with the Advanced Agentic Coding Team, Google DeepMind.}}
+\author{Ilias~Chrysovergis%
+\thanks{I.~Chrysovergis is with the Department of Electrical and Electronic Engineering, Imperial College London, London SW7 2AZ, UK and Metatopia (e-mail: ilias@chrysovergis.gr, iliachry@gmail.com).}}
 
 \markboth{IEEE Networking Letters,~Vol.~XX, No.~X, August~2026}%
-{Chrysovergis \MakeLowercase{\textit{et al.}}: Adversarial Delay Amplification in Multi-Node Networks}
+{Chrysovergis: Adversarial Delay Amplification in Multi-Node Networks}
 
 \maketitle
 
@@ -39,7 +39,7 @@ Adversarial queueing, ARQ feedback loops, renewal-reward process, hypoexponentia
 \end{IEEEkeywords}
 
 \section{Introduction}
-\IEEEPARstart{R}{ecent} deployments of autonomous swarms, tactical ad-hoc networks, and mission-critical IoT systems operate over hostile wireless channels subject to active jamming, payload corruption, and packet dropping \cite{wood2002denial, pelechrinis2011denial}. To ensure delivery, transport protocols employ timeout-governed automatic repeat request (ARQ) retransmissions \cite{fall1996simulation}.
+\IEEEPARstart{R}{ecent} deployments of autonomous swarms, tactical ad-hoc networks, and mission-critical IoT systems operate over hostile wireless channels subject to active jamming, payload corruption, and packet dropping \cite{wood2002denial, pelechrinis2011denial}. Adversarial packet destruction and removal dynamics relate conceptually to the foundational theory of G-networks with negative customers pioneered by Gelenbe \cite{gelenbe1991product, gelenbe1993gnetworks}. To ensure delivery across unreliable links, transport protocols employ timeout-governed automatic repeat request (ARQ) retransmissions \cite{fall1996simulation}.
 
 While retransmissions restore reliability, they create an insidious \textit{positive feedback loop}: adversarial packet drops or corruption induce timeouts, which generate retransmissions, elevating the aggregate network load $\Lambda^*$ and escalating queueing delay, in turn triggering cascades of further timeouts. This feedback manifests as abrupt ``cliff-edge'' saturation boundaries.
 
@@ -79,7 +79,8 @@ Let a single queue operate with service rate $\mu$, timeout $T$, and attack prob
 In destruction attacks, packets are dropped before receiving service. The effective rate occupying the server is $\lambda_{\text{eff}} = \Lambda^*(1-p)$. Server utilization is $\rho = \lambda_{\text{eff}}/\mu < 1$. The total time in system satisfies $P(W_q + S \le T) = 1 - \rho e^{-(\mu - \lambda_{\text{eff}})T}$.
 \begin{align}
 P_{\text{succ}} &= (1 - p)\left[1 - \frac{\Lambda^*(1-p)}{\mu} e^{-(\mu - \Lambda^*(1-p))T}\right] \\
-E[D] &= \frac{1}{P_{\text{succ}}}\left[\frac{\Lambda^*(1-p)}{\mu(\mu - \Lambda^*(1-p))} + \frac{1-p}{\mu}\right] + \left(\frac{1}{P_{\text{succ}}} - 1\right)B
+E[D] &= \frac{1}{P_{\text{succ}}}\left[\frac{\Lambda^*(1-p)}{\mu(\mu - \Lambda^*(1-p))} + \frac{1-p}{\mu}\right] \nonumber \\
+&\quad + \left(\frac{1}{P_{\text{succ}}} - 1\right)B
 \end{align}
 \textbf{Capacity Bound:} Stability requires $\Lambda^*(1-p) < \mu \iff \lambda < \mu$. Destroyed packets do not consume service capacity.
 
@@ -118,7 +119,10 @@ p_{\text{no\_to}} = P(S_N \le W) = \frac{\gamma(k, W/\theta)}{\Gamma(k)}, \quad 
 \subsection{Exact Delay Decomposition}
 Conditioned on success ($S_N \le W$), the truncated Gamma expectation is $E[D_{\text{succ}}] = \mu_S \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}$. Failed attempts average:
 \begin{equation}
-E[D_{\text{fail}}] = \frac{\sum_{i=0}^{N-1} (1-p)^i p \sum_{j=0}^i T_j + (1-p)^N (1 - p_{\text{no\_to}}) E[S_N \mid S_N > W]}{\sum_{i=0}^{N-1} (1-p)^i p + (1-p)^N (1 - p_{\text{no\_to}})}
+\begin{split}
+E[D_{\text{fail}}] &= \frac{1}{1 - P_{\text{succ}}} \Bigg[\sum_{i=0}^{N-1} (1-p)^i p \sum_{j=0}^i T_j \\
+&\quad + (1-p)^N (1 - p_{\text{no\_to}}) E[S_N \mid S_N > W]\Bigg]
+\end{split}
 \end{equation}
 where $E[S_N \mid S_N > W] = \mu_S \frac{1 - \gamma(k+1, W/\theta)/\Gamma(k+1)}{1 - \gamma(k, W/\theta)/\Gamma(k)}$.
 
@@ -178,12 +182,21 @@ We validated our analytical models against high-fidelity discrete-event simulati
 
 In conclusion, this letter established the first unified analytical framework characterizing the non-linear coupled dynamics between adversarial attacks, retransmissions, and multi-hop network topologies. The results provide definitive criteria for dimensioning timeout timers and network capacity in contested environments.
 
+\section*{Acknowledgment}
+The author expresses profound gratitude to Professor Erol Gelenbe (Imperial College London and IITIS PAN) for inspirational supervision and mentorship during the author's MSc thesis at Imperial College London, where the foundational mathematical concepts of adversarial queueing dynamics were established.
+
 \begin{thebibliography}{99}
 \bibitem{wood2002denial}
 A.~D.~Wood and J.~A.~Stankovic, ``Denial of service in sensor networks,'' \textit{IEEE Computer}, vol.~35, no.~10, pp.~54--62, 2002.
 
 \bibitem{pelechrinis2011denial}
 K.~Pelechrinis \textit{et al.}, ``Denial of service attacks in wireless networks: The case of jammers,'' \textit{IEEE Commun. Surveys Tuts.}, vol.~13, no.~2, pp.~245--257, 2011.
+
+\bibitem{gelenbe1991product}
+E.~Gelenbe, ``Product-form queueing networks with negative and positive customers,'' \textit{Journal of Applied Probability}, vol.~28, no.~3, pp.~656--663, 1991.
+
+\bibitem{gelenbe1993gnetworks}
+E.~Gelenbe, ``G-networks with triggered customer movement,'' \textit{Journal of Applied Probability}, vol.~30, no.~3, pp.~742--748, 1993.
 
 \bibitem{fall1996simulation}
 K.~Fall and S.~Floyd, ``Simulation-based comparisons of Tahoe, Reno, and SACK TCP,'' \textit{ACM SIGCOMM CCR}, vol.~26, no.~3, pp.~5--21, 1996.
