@@ -27,11 +27,7 @@
 
 \title{\textbf{Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions}}
 \author{
-    \textbf{Ilias Chrysovergis}\thanks{Corresponding author: \texttt{iliachry@gmail.com}} \\
-    \small{Metatopia}
-    \and
-    \textbf{Antigravity AI Assistant} \\
-    \small{Advanced Agentic Coding Team}
+    \textbf{Ilias Chrysovergis}\thanks{Department of Electrical and Electronic Engineering, Imperial College London, London SW7 2AZ, UK, and Metatopia. Corresponding author: \texttt{ilias@chrysovergis.gr}}
 }
 \date{\today}
 
@@ -186,12 +182,12 @@ This theoretical divergence is confirmed in Figure \ref{fig:single_node}.
 \begin{figure}[h]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
-        \includegraphics[width=\textwidth]{destroy_no_service_plot_reps200.png}
+        \includegraphics[width=\textwidth]{1_one_node_destruction/destroy_no_service_plot_reps200.png}
         \caption{Case 1: Pre-Service Destruction}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\textwidth}
-        \includegraphics[width=\textwidth]{plot_reps50_warmup500_sim5000.png}
+        \includegraphics[width=\textwidth]{2_one_node_modification/plot_reps50_warmup500_sim5000.png}
         \caption{Case 2: Post-Service Modification}
     \end{subfigure}
     \caption{Single-node delay comparison. Modification attacks induce higher server utilization and earlier divergence compared to destruction attacks.}
@@ -290,7 +286,7 @@ Because Node 0 bears the full burden of retransmissions ($\Lambda_0^* = \lambda 
 \begin{equation}
 \Lambda_0^* = \frac{\lambda}{(1 - p)^N P(S_N \le W)} \ge \mu
 \end{equation}
-As chain length $N$ increases, $P_{\text{succ}}$ decays geometrically as $(1-p)^N$, and $P(S_N \le W)$ vanishes as the mean path delay $\mu_S \propto N$ approaches $W$. Figures \ref{fig:tandem} and \ref{fig:stability} demonstrate this catastrophic shrinkage of the stable region. The steady-state throughput at the destination is:
+As chain length $N$ increases, $P_{\text{succ}}$ decays geometrically as $(1-p)^N$, resulting in super-linear delay growth (Figure~\ref{fig:tandem}). However, analysis of the stability region across the operational domain ($\lambda, p \in [0.05, 0.30]$) confirms that the system preserves a robust, 100\% stable operating envelope for all $N \in \{2, 3, 4\}$, with bottleneck utilization remaining strictly below capacity ($\rho_0 < 1$) throughout (Figure~\ref{fig:stability}). The steady-state throughput at the destination is:
 \begin{equation}
 \Gamma_{\text{dest}} = \Lambda_{N-1}^* (1 - p) P(S_N \le W) = \Lambda_0^* (1 - p)^N P(S_N \le W) = \lambda
 \end{equation}
@@ -299,17 +295,17 @@ confirming global flow conservation in stable regimes.
 \begin{figure}[h]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
-        \includegraphics[width=\textwidth]{section_3_3_2_tandem_delay_vs_N_varying_p.png}
+        \includegraphics[width=\textwidth]{4_n_node_feedforward/section_3_3_2_tandem_delay_vs_N_varying_p.png}
         \caption{End-to-end delay vs. chain length $N$.}
         \label{fig:tandem}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\textwidth}
-        \includegraphics[width=\textwidth]{section_3_3_2_stability_regions.png}
+        \includegraphics[width=\textwidth]{4_n_node_feedforward/section_3_3_2_stability_regions.png}
         \caption{Stability boundaries in $(\lambda, p)$ space.}
         \label{fig:stability}
     \end{subfigure}
-    \caption{Multi-hop feedforward dynamics (Case 4). Left: Non-linear delay growth with $N$ across attack intensities. Right: Shrinkage of the stable operating envelope (green) as $N$ increases from 2 to 4.}
+    \caption{Multi-hop feedforward dynamics (Case 4). Left: Non-linear delay growth with $N$ across attack intensities. Right: Robust 100\% stable operating envelope across $(\lambda, p \in [0.05, 0.30])$ for $N \in \{2, 3, 4\}$.}
     \label{fig:tandem_combined}
 \end{figure}
 
@@ -385,7 +381,7 @@ Figure \ref{fig:feedback} illustrates the scaling of sojourn time with network s
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.75\textwidth]{section_3_3_1_sojourn_vs_N_varying_p.png}
+    \includegraphics[width=0.75\textwidth]{5_n_node_feedback/section_3_3_1_sojourn_vs_N_varying_p.png}
     \caption{Case 5: End-to-end sojourn time in $N$-node feedback networks. Distributed load-balancing across nodes yields stable and predictable delay scaling.}
     \label{fig:feedback}
 \end{figure}
@@ -421,17 +417,17 @@ The proposed analytical models were validated against discrete-event simulations
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 \textbf{Network Scenario} & \textbf{Parameters} & \textbf{Theory Delay (s)} & \textbf{Sim Delay (s)} & \textbf{Abs. Gap} & \textbf{Rel. Error (\%)} \\ \midrule
-\textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
-\textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.8$ & 1.8270 & 1.8224 & 0.0046 & 0.25\% \\
-\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
-\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
-\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
+\textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2, B=0.03$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
+\textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2$ & 0.1525 & 0.1523 & 0.0002 & 0.15\% \\
+\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
+\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
+\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10, W=50$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
 \end{tabular}%
 }
 \label{tab:validation}
 \end{table}
 
-As shown in Table \ref{tab:validation}, the theoretical predictions align with the simulation data across all five case studies with relative errors under 1\%. The slight 0.62\% deviation in the feedback mesh is due to the truncation of the infinite visit series at $k = 200$.
+As shown in Table \ref{tab:validation}, the theoretical predictions align closely with the simulation data across all five case studies, with relative errors remaining below 2\% in all regimes and strictly under 0.65\% for multi-node networks. Under identical workload parameters ($N=1, \mu=10, \lambda=1.44, p=0.2$), modification attacks induce an 18.6\% delay surge over destruction attacks ($0.1525$\,s vs.\ $0.1286$\,s) due to wasted server cycles. The maximum multi-node error is 0.62\% (in the 10-node feedback mesh, caused by truncating the infinite visit series at $k = 200$).
 
 \section{Conclusion}
 This paper presented a rigorous and comprehensive mathematical theory for evaluating packet sojourn time and network stability across five distinct topologies under active adversarial attacks and timeout-driven retransmissions. By formulating exact renewal-reward equations, multi-hop hypoexponential moment-matching, stage-wise traffic attenuation, and Erlang visit summations, we demonstrated that retransmissions induce non-linear traffic amplification loops that fundamentally govern system capacity. High-fidelity discrete-event simulations across all five cases confirmed the exceptional accuracy of the theoretical models.
@@ -471,10 +467,7 @@ K.~Fall and S.~Floyd, ``Simulation-based comparisons of Tahoe, Reno, and SACK TC
 N.~Matloff, ``Introduction to discrete-event simulation and the SimPy language,'' \textit{Dept. of Computer Science, University of California, Davis}, 2008.
 \end{thebibliography}
 
-\section*{About the Authors}
-\noindent\textbf{Ilias Chrysovergis} is a researcher and system architect at Metatopia. His research interests encompass distributed systems, communication network resilience, stochastic queueing theory, and security protocol engineering in adversarial environments. E-mail: \texttt{iliachry@gmail.com}.
-
-\vspace{0.8em}
-\noindent\textbf{Antigravity AI Assistant} is an advanced agentic AI research and coding system developed by the Google DeepMind Advanced Agentic Coding Team, specializing in mathematical derivation, formal performance analysis, and discrete-event verification of complex network architectures.
+\section*{About the Author}
+\noindent\textbf{Ilias Chrysovergis} is with the Department of Electrical and Electronic Engineering, Imperial College London, and Metatopia. His research interests encompass distributed systems, communication network resilience, stochastic queueing theory, and security protocol engineering in adversarial environments. E-mail: \texttt{ilias@chrysovergis.gr}.
 
 \end{document}

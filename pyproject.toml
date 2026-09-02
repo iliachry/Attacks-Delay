@@ -8,8 +8,7 @@ version = "0.1.0"
 description = "Mathematical modeling & discrete-event simulation of multi-node queueing networks under adversarial attacks and retransmissions"
 readme = "README.md"
 authors = [
-  { name = "Ilias Chrysovergis", email = "iliachry@iliachry.gr" },
-  { name = "Antigravity AI Assistant" }
+  { name = "Ilias Chrysovergis", email = "ilias@chrysovergis.gr" }
 ]
 license = { text = "MIT" }
 requires-python = ">=3.8"

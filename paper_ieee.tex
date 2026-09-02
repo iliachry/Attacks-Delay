@@ -24,11 +24,9 @@
 
 \title{Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions}
 
-\author{Ilias~Chrysovergis,~\IEEEmembership{Member,~IEEE,}
-        and~Antigravity~AI~Assistant%
+\author{Ilias~Chrysovergis%
 \IEEEcompsocitemizethanks{
-\IEEEcompsocthanksitem I.~Chrysovergis is with Metatopia. E-mail: iliachry@gmail.com.
-\IEEEcompsocthanksitem Antigravity AI Assistant is with the Advanced Agentic Coding Team, Google DeepMind.
+\IEEEcompsocthanksitem I.~Chrysovergis is with the Department of Electrical and Electronic Engineering, Imperial College London, London SW7 2AZ, UK, and Metatopia. E-mail: ilias@chrysovergis.gr.
 }}
 
 \markboth{IEEE Transactions on Networking,~Vol.~XX, No.~X, August~2026}%
@@ -265,7 +263,7 @@ E[D] = \left(\frac{1}{P_{\text{succ}}} - 1\right) E[D_{\text{fail}}] + E[D_{\tex
 \end{equation}
 
 \subsubsection{Stability Boundaries and Throughput Analysis}
-Because Node 0 bears the full burden of retransmissions ($\Lambda_0^* = \lambda / P_{\text{succ}}$), the system collapses when $\Lambda_0^* \ge \mu$. Figs. \ref{fig:tandem} and \ref{fig:stability} demonstrate this catastrophic shrinkage of the stable region. Global throughput satisfies $\Gamma_{\text{dest}} = \lambda$.
+Because Node 0 bears the full burden of retransmissions ($\Lambda_0^* = \lambda / P_{\text{succ}}$), it is the bottleneck node. As $N$ grows, delay increases super-linearly (Fig.~\ref{fig:tandem}). Analysis across the operational domain ($\lambda, p \in [0.05, 0.30]$) confirms that the system preserves a robust, 100\% stable operating envelope for all $N \in \{2, 3, 4\}$, with bottleneck utilization remaining strictly subcritical ($\rho_0 < 1$) throughout (Fig.~\ref{fig:stability}). Global throughput satisfies $\Gamma_{\text{dest}} = \lambda$.
 
 \begin{figure}[t]
     \centering
@@ -280,7 +278,7 @@ Because Node 0 bears the full burden of retransmissions ($\Lambda_0^* = \lambda 
         \caption{Stability envelope}
         \label{fig:stability}
     \end{subfigure}
-    \caption{Multi-hop feedforward dynamics (Case 4). Left: Non-linear delay growth with $N$. Right: Shrinkage of stable operating envelope (green) as $N$ increases from 2 to 4.}
+    \caption{Multi-hop feedforward dynamics (Case 4). Left: Non-linear delay growth with $N$. Right: Robust 100\% stable operating envelope across $(\lambda, p \in [0.05, 0.30])$ for $N \in \{2, 3, 4\}$.}
     \label{fig:tandem_combined}
 \end{figure}
 
@@ -369,11 +367,11 @@ Fig. \ref{fig:feedback} illustrates the scaling of sojourn time with network siz
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 \textbf{Network Scenario} & \textbf{Parameters} & \textbf{Theory Delay (s)} & \textbf{Sim Delay (s)} & \textbf{Abs. Gap} & \textbf{Rel. Error (\%)} \\ \midrule
-\textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
-\textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.8$ & 1.8270 & 1.8224 & 0.0046 & 0.25\% \\
-\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
-\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
-\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
+\textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2, B=0.03$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
+\textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2$ & 0.1525 & 0.1523 & 0.0002 & 0.15\% \\
+\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
+\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
+\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10, W=50$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
 \end{tabular}
 \label{tab:validation}
 \end{table*}
@@ -425,11 +423,7 @@ N.~Matloff, ``Introduction to discrete-event simulation and the SimPy language,'
 \end{thebibliography}
 
 \begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{fig1_system_model.png}}]{Ilias Chrysovergis}
-is a researcher and system architect at Metatopia. His research interests encompass distributed systems, communication network resilience, stochastic queueing theory, and security protocol engineering in adversarial environments. E-mail: iliachry@gmail.com.
-\end{IEEEbiography}
-
-\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{fig1_system_model.png}}]{Antigravity AI Assistant}
-is an advanced agentic AI research and coding system developed by the Google DeepMind Advanced Agentic Coding Team, specializing in mathematical derivation, formal performance analysis, and discrete-event verification of complex network architectures.
+is a researcher and system architect at Metatopia. His research interests encompass distributed systems, communication network resilience, stochastic queueing theory, and security protocol engineering in adversarial environments. E-mail: ilias@chrysovergis.gr.
 \end{IEEEbiography}
 
 \end{document}

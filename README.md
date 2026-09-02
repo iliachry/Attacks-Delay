@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-5%20passed-brightgreen.svg)]()
 
 > **Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions**  
-> **Authors:** Ilias Chrysovergis (Metatopia), Antigravity AI Assistant (Google DeepMind)  
+> **Author:** Ilias Chrysovergis (Imperial College London & Metatopia)  
 > **Preprint / Target:** IEEE Transactions on Networking (ToN) / arXiv (`cs.NI`, `math.PR`, `cs.CR`)
 
 ---
@@ -228,7 +228,7 @@ If you find this codebase or theoretical framework helpful in your research, ple
 ```bibtex
 @article{chrysovergis2026adversarial,
   title   = {Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions},
-  author  = {Chrysovergis, Ilias and Antigravity AI Assistant},
+  author  = {Chrysovergis, Ilias},
   journal = {arXiv preprint},
   year    = {2026}
 }

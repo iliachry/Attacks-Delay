@@ -3,7 +3,7 @@ aqnet: Mathematical Modeling & Discrete-Event Simulation of Multi-Node Queueing 
 """
 
 __version__ = "0.1.0"
-__author__ = "Ilias Chrysovergis & Antigravity AI Assistant"
+__author__ = "Ilias Chrysovergis"
 
 from aqnet.models.one_node import (
     solve_one_node_destruction,
