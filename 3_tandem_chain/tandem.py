@@ -129,8 +129,8 @@ plt.xlabel('Attack Probability (p)')
 plt.ylabel('Average Delay (s)')
 plt.title(f'Tandem Network (N={N_tandem}) - Delay vs p')
 plt.legend()
-    import os
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    plot_path = os.path.join(script_dir, 'corrected_tandem_simulation_N3.png')
-    plt.savefig(plot_path, dpi=300)
-    print(f"Done. Plot saved to {plot_path}")
+import os
+script_dir = os.path.dirname(os.path.abspath(__file__))
+plot_path = os.path.join(script_dir, 'corrected_tandem_simulation_N3.png')
+plt.savefig(plot_path, dpi=300)
+print(f"Done. Plot saved to {plot_path}")

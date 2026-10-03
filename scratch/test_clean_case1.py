@@ -1,7 +1,6 @@
 import numpy as np
 import simpy
 import random
-from concurrent.futures import ProcessPoolExecutor
 
 mu = 10.0
 T = 2.0

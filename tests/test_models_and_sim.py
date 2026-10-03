@@ -3,7 +3,6 @@ Unit and integration tests for aqnet package.
 """
 
 import numpy as np
-import pytest
 from aqnet import (
     solve_one_node_destruction,
     solve_one_node_modification,
@@ -12,8 +11,6 @@ from aqnet import (
     solve_feedback_theory,
     simulate_one_node_destruction,
     simulate_one_node_modification,
-    simulate_tandem,
-    simulate_feedback,
 )
 
 

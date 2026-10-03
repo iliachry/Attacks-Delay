@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import json
 import simpy
 import random
-from scipy.optimize import fsolve
 
 # --- ADJUSTED MODEL PARAMETERS FOR SECTION 3.3.2 ---
 mu = 2.0  # Increased service rate for better stability
@@ -80,7 +79,6 @@ def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
         # Since rates are different, it's Hypoexponential. 
         # For simplicity and robustness, we'll approximate with an Erlang-like mean
         # but use the actual sum of T_i for the mean and variance.
-        avg_total_delay = np.sum(T)
         
         # P(S_N > W). We'll use a Gamma approximation for the sum of exponentials
         # Match mean and variance: 
@@ -94,7 +92,6 @@ def solve_tandem_network_theory_robust(N, mu, lambda_arr, p, W):
         k_shape = (mean_s ** 2) / var_s
         
         # P(S_N <= W) = gammainc(k_shape, W / theta)
-        from scipy.special import gammainc
         p_no_timeout = gammainc(k_shape, W / theta)
         
         # Success probability for a single journey
@@ -221,7 +218,7 @@ def create_tandem_network_simulation(N, mu, lambda_arr, p, W):
                         # Timeout check uses attempt_start_time
                         if (env.now - packet.attempt_start_time) > W:
                             # Timeout - retransmit from first node
-                            new_packet = TandemPacket(packet.packet_id + f"_timeout", env.now)
+                            new_packet = TandemPacket(packet.packet_id + "_timeout", env.now)
                             new_packet.original_arrival_time = packet.original_arrival_time
                             new_packet.attempt_start_time = env.now # Timer resets
                             queues[0].put(new_packet)
@@ -268,17 +265,6 @@ def run_multiple_simulations(N, mu, lambda_arr, p, W, replications):
     return np.mean(results) if results else np.inf
 
 # --- EXECUTION AND PLOTTING ---
-
-    plt.grid(True)
-    plt.ylim(bottom=0)  # Ensure positive y-axis
-    plt.savefig('section_3_3_2_tandem_delay_vs_N_varying_p.png', dpi=300, bbox_inches='tight')
-    # plt.show() # Disabled as per user request
-    
-    return {
-        "p_values": p_values,
-        "N_values": list(N_values),
-        "results": all_results
-    }
 
 def plot_sojourn_time_vs_N_varying_p():
     """Generate Figure for Section 3.3.2: Average Sojourn time vs N, varying attack probability."""

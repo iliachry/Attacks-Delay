@@ -228,4 +228,4 @@ if __name__ == '__main__':
     for reps_tag in [50, 100, 200]:
         filename = f"destroy_no_service_plot_reps{reps_tag}.png"
         plt.savefig(os.path.join(script_dir, filename), dpi=300)
-    print(f"\nPlots updated and saved.")
+    print("\nPlots updated and saved.")

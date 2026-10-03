@@ -1,4 +1,3 @@
-import sys
 path = '2_one_node_modification/one_node_packet_modification.py'
 with open(path, 'r') as f:
     lines = f.readlines()

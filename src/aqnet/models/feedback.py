@@ -3,7 +3,6 @@ Analytical solver for N-Node Symmetric Feedback Mesh Topologies under Adversaria
 """
 
 from typing import Optional, Tuple
-import numpy as np
 from scipy.special import gammainc
 
 
