@@ -51,3 +51,6 @@ aqnet = "aqnet.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+include = ["src/**/*.py", "tests/**/*.py", "generate_stability_figure.py"]

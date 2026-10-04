@@ -2,9 +2,6 @@ import numpy as np
 import simpy
 import random
 from concurrent.futures import ProcessPoolExecutor
-import json
-import os
-import matplotlib.pyplot as plt
 
 # --- MODEL PARAMETERS ---
 mu = 10.0

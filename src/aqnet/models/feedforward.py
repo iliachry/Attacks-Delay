@@ -1,8 +1,8 @@
 """
 Analytical solver for N-Node Feedforward Network Topologies under Adversarial Attacks (Case 4).
 """
+from __future__ import annotations
 
-from typing import Optional, Tuple
 import numpy as np
 from scipy.special import gammainc
 
@@ -16,7 +16,7 @@ def solve_feedforward_theory(
     max_iterations: int = 100,
     tolerance: float = 1e-6,
     damping_factor: float = 0.5,
-) -> Tuple[Optional[float], Optional[float], Optional[dict]]:
+) -> tuple[float | None, float | None, dict | None]:
     """
     Principled solver for N-Node feedforward network accounting for stage-wise retransmission delays.
 
