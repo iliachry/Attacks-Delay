@@ -4,17 +4,22 @@ Command-line interface for the aqnet package.
 
 import argparse
 import sys
+
 import numpy as np
+
 from aqnet import __version__
-from aqnet.models.one_node import solve_one_node_destruction, solve_one_node_modification
-from aqnet.models.tandem import solve_tandem_theory
-from aqnet.models.feedforward import solve_feedforward_theory
 from aqnet.models.feedback import solve_feedback_theory
+from aqnet.models.feedforward import solve_feedforward_theory
+from aqnet.models.one_node import (
+    solve_one_node_destruction,
+    solve_one_node_modification,
+)
+from aqnet.models.tandem import solve_tandem_theory
 from aqnet.simulation.engine import (
+    simulate_feedback,
     simulate_one_node_destruction,
     simulate_one_node_modification,
     simulate_tandem,
-    simulate_feedback,
 )
 
 

@@ -1,9 +1,10 @@
 """
 SimPy Discrete-Event Simulation Engine for Adversarial Queueing Networks.
 """
+from __future__ import annotations
 
-from typing import List, Optional
 import random
+
 import numpy as np
 import simpy
 
@@ -28,7 +29,7 @@ def simulate_one_node_destruction(
     backoff: float = 0.03,
     sim_duration: float = 5000.0,
     warmup_period: float = 500.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> float:
     """Runs a single replication of Case 1 (Pre-service destruction)."""
     if seed is not None:
@@ -38,7 +39,7 @@ def simulate_one_node_destruction(
     env = simpy.Environment()
     server = simpy.Resource(env, capacity=1)
     queue = simpy.Store(env)
-    delays: List[float] = []
+    delays: list[float] = []
 
     def packet_generator():
         pid = 0
@@ -94,7 +95,7 @@ def simulate_one_node_modification(
     T: float = 2.0,
     sim_duration: float = 5000.0,
     warmup_period: float = 500.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> float:
     """Runs a single replication of Case 2 (Post-service modification)."""
     if seed is not None:
@@ -104,7 +105,7 @@ def simulate_one_node_modification(
     env = simpy.Environment()
     server = simpy.Resource(env, capacity=1)
     queue = simpy.Store(env)
-    delays: List[float] = []
+    delays: list[float] = []
 
     def packet_generator():
         pid = 0
@@ -147,7 +148,7 @@ def simulate_tandem(
     W: float = 8.0,
     sim_duration: float = 5000.0,
     warmup_period: float = 1000.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> float:
     """Runs a single replication of Case 3 (Tandem Chain)."""
     if seed is not None:
@@ -157,7 +158,7 @@ def simulate_tandem(
     env = simpy.Environment()
     queues = [simpy.Store(env) for _ in range(N)]
     servers = [simpy.Resource(env, capacity=1) for _ in range(N)]
-    delays: List[float] = []
+    delays: list[float] = []
 
     def packet_generator():
         pid = 0
@@ -204,7 +205,7 @@ def simulate_feedforward(
     W: float = 8.0,
     sim_duration: float = 5000.0,
     warmup_period: float = 1000.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> float:
     """Runs a single replication of Case 4 (Feedforward network)."""
     return simulate_tandem(
@@ -227,7 +228,7 @@ def simulate_feedback(
     W: float = 50.0,
     sim_duration: float = 5000.0,
     warmup_period: float = 1000.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> float:
     """Runs a single replication of Case 5 (Symmetric feedback mesh)."""
     if seed is not None:
@@ -237,7 +238,7 @@ def simulate_feedback(
     env = simpy.Environment()
     servers = [simpy.Resource(env, capacity=1) for _ in range(N)]
     queues = [simpy.Store(env) for _ in range(N)]
-    delays: List[float] = []
+    delays: list[float] = []
 
     def source(node_id: int):
         pid = 0

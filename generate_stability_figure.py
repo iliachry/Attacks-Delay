@@ -1,11 +1,12 @@
 import os
 import sys
-import numpy as np
-import matplotlib.pyplot as plt
+
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
 
 sys.path.append('4_n_node_feedforward')
-from n_node_feedforward import solve_tandem_network_theory, mu, W
+from n_node_feedforward import W, mu, solve_tandem_network_theory
 
 arrival_range = np.linspace(0.05, 0.3, 20)
 attack_range = np.linspace(0.05, 0.3, 20)
@@ -62,7 +63,7 @@ for idx, N in enumerate([2, 3, 4]):
     axes[idx].text(0.175, 0.175, 'STABLE OPERATING\nENVELOPE (100%)', 
                    color='white', fontsize=11, fontweight='bold',
                    ha='center', va='center',
-                   bbox=dict(boxstyle='round,pad=0.5', facecolor='#1b5e20', alpha=0.85, edgecolor='white', linewidth=1.5))
+                   bbox={'boxstyle': 'round,pad=0.5', 'facecolor': '#1b5e20', 'alpha': 0.85, 'edgecolor': 'white', 'linewidth': 1.5})
 
 # Shared colorbar / legend
 cbar_ax = fig.add_axes([0.25, -0.05, 0.5, 0.05])

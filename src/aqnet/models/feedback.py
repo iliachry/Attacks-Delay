@@ -1,8 +1,8 @@
 """
 Analytical solver for N-Node Symmetric Feedback Mesh Topologies under Adversarial Attacks (Case 5).
 """
+from __future__ import annotations
 
-from typing import Optional, Tuple
 from scipy.special import gammainc
 
 
@@ -23,7 +23,7 @@ def solve_feedback_theory(
     max_iterations: int = 500,
     damping: float = 0.5,
     tolerance: float = 1e-7,
-) -> Tuple[Optional[float], Optional[float], Optional[dict]]:
+) -> tuple[float | None, float | None, dict | None]:
     """
     Solves expected sojourn time in an N-Node symmetric feedback mesh network under adversarial attacks.
 

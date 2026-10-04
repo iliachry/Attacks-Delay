@@ -3,14 +3,15 @@ Unit and integration tests for aqnet package.
 """
 
 import numpy as np
+
 from aqnet import (
+    simulate_one_node_destruction,
+    simulate_one_node_modification,
+    solve_feedback_theory,
+    solve_feedforward_theory,
     solve_one_node_destruction,
     solve_one_node_modification,
     solve_tandem_theory,
-    solve_feedforward_theory,
-    solve_feedback_theory,
-    simulate_one_node_destruction,
-    simulate_one_node_modification,
 )
 
 
@@ -69,7 +70,7 @@ def test_tandem_chain_theory():
 
 def test_feedforward_theory():
     """Verify Case 4 feedforward network solver returns valid metrics."""
-    avg_delay, lambda_0, details = solve_feedforward_theory(N=3, mu=2.0, lambda_arr=0.15, p=0.05, W=8.0)
+    avg_delay, lambda_0, _details = solve_feedforward_theory(N=3, mu=2.0, lambda_arr=0.15, p=0.05, W=8.0)
     assert avg_delay is not None
     assert avg_delay > 0
     assert lambda_0 > 0.15
@@ -77,7 +78,7 @@ def test_feedforward_theory():
 
 def test_feedback_theory():
     """Verify Case 5 feedback mesh solver convergence."""
-    avg_delay, lambda_star, details = solve_feedback_theory(N=3, mu=1.0, lambda_arr=0.05, p=0.05, W=50.0)
+    avg_delay, lambda_star, _details = solve_feedback_theory(N=3, mu=1.0, lambda_arr=0.05, p=0.05, W=50.0)
     assert avg_delay is not None
     assert avg_delay > 0
     assert lambda_star > 0.05
