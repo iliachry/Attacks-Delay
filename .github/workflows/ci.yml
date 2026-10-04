@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          pip install ruff pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install -e .
 
@@ -35,7 +35,7 @@ jobs:
 
       - name: Run pytest test suite
         run: |
-          pytest tests/
+          pytest --cov=aqnet --cov-report=term-missing tests/
 
       - name: Smoke-test generate_stability_figure.py
         run: |

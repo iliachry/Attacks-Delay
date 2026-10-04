@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-5%20passed-brightgreen.svg)]()
+[![CI](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml/badge.svg)](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml)
 
 > **Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions**  
 > **Author:** Ilias Chrysovergis (Imperial College London & Metatopia)  

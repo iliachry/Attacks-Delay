@@ -54,3 +54,13 @@ where = ["src"]
 
 [tool.ruff]
 include = ["src/**/*.py", "tests/**/*.py", "generate_stability_figure.py"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=aqnet --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["aqnet"]
+
+[tool.coverage.report]
+show_missing = true
