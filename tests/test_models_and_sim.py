@@ -267,3 +267,121 @@ def test_cli_subcommands(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["aqnet"])
     with pytest.raises(SystemExit):
         cli_main()
+
+
+# --- Two-Station Confidence Cascade (aqnet.cascade) Tests ---
+
+
+def test_cascade_batch_timeout_boundary_limits():
+    """Verify exact closed-form limits of the (b, T) batch accumulator."""
+    from aqnet.cascade import solve_batch_timeout_moments
+
+    # 1. b = 1: zero batching delay, E[B_disp] = 1
+    m_b1 = solve_batch_timeout_moments(lambda_off=150.0, b=1, T_ms=25.0)
+    assert m_b1["E_B_disp"] == 1.0
+    assert m_b1["E_W_batch_ms"] == 0.0
+
+    # 2. T -> inf: E[B_disp] = b, E[W_batch] = (b - 1) / (2 * lambda_off)
+    lam_off = 120.0
+    b = 4
+    m_inf = solve_batch_timeout_moments(lambda_off=lam_off, b=b, T_ms=float("inf"))
+    expected_w_ms = ((b - 1.0) / (2.0 * lam_off)) * 1000.0
+    assert np.isclose(m_inf["E_B_disp"], b)
+    assert np.isclose(m_inf["E_W_batch_ms"], expected_w_ms, rtol=1e-6)
+
+    # 3. lambda_off -> 0+: E[B_disp] -> 1, E[W_batch] -> T_ms for b >= 2
+    m_zero = solve_batch_timeout_moments(lambda_off=1e-9, b=4, T_ms=25.0)
+    assert np.isclose(m_zero["E_B_disp"], 1.0, rtol=1e-5)
+    assert np.isclose(m_zero["E_W_batch_ms"], 25.0, rtol=1e-5)
+
+
+def test_cascade_delay_theory_vs_simpy():
+    """Cross-validate closed-form E[D](tau, b, T) and E[W_batch] against SimPy discrete-event simulation."""
+    from aqnet.cascade import CascadeParams, simulate_cascade, solve_cascade_delay
+
+    params = CascadeParams(lam=500.0)
+    for b in (1, 4, 8):
+        theory = solve_cascade_delay(tau=0.55, b=b, T_ms=25.0, params=params, q_override=0.30)
+        sim = simulate_cascade(
+            tau=0.55,
+            b=b,
+            T_ms=25.0,
+            params=params,
+            q_override=0.30,
+            sim_duration_s=35.0,
+            warmup_s=3.0,
+            seed=100 + b,
+        )
+        rel_err_d = abs(theory["E_D_ms"] - sim["E_D_ms"]) / theory["E_D_ms"]
+        assert rel_err_d < 0.025, f"b={b}: E[D] rel error {rel_err_d:.4f} (theory={theory['E_D_ms']}, sim={sim['E_D_ms']})"
+        if b > 1:
+            rel_err_wb = abs(theory["E_W_batch_ms"] - sim["E_W_batch_ms"]) / theory["E_W_batch_ms"]
+            assert rel_err_wb < 0.03, f"b={b}: E[W_batch] rel error {rel_err_wb:.4f}"
+
+
+def test_cascade_pareto_derivative_and_optimal_tau():
+    """Verify analytical Pareto derivatives against central finite differences and optimal threshold solver."""
+    from aqnet.cascade import (
+        CascadeParams,
+        cascade_accuracy,
+        find_optimal_threshold_tau,
+        solve_cascade_delay,
+        solve_cascade_power,
+        solve_pareto_derivative,
+    )
+
+    params = CascadeParams(lam=500.0)
+    tau = 0.58
+    eps = 1e-5
+    deriv = solve_pareto_derivative(tau=tau, b=4, T_ms=25.0, params=params)
+
+    fd_dA = (cascade_accuracy(tau + eps, params) - cascade_accuracy(tau - eps, params)) / (2.0 * eps)
+    fd_dD = (
+        solve_cascade_delay(tau + eps, b=4, T_ms=25.0, params=params)["E_D_ms"]
+        - solve_cascade_delay(tau - eps, b=4, T_ms=25.0, params=params)["E_D_ms"]
+    ) / (2.0 * eps)
+    fd_dP = (
+        solve_cascade_power(tau + eps, b=4, T_ms=25.0, params=params)["E_P_W"]
+        - solve_cascade_power(tau - eps, b=4, T_ms=25.0, params=params)["E_P_W"]
+    ) / (2.0 * eps)
+
+    assert np.isclose(deriv["dA_dtau"], fd_dA, rtol=1e-4)
+    assert np.isclose(deriv["dED_dtau_ms"], fd_dD, rtol=1e-4)
+    assert np.isclose(deriv["dEP_dtau_W"], fd_dP, rtol=1e-4)
+
+    tau_star = find_optimal_threshold_tau(mu_D=0.002, mu_P=0.0005, b=4, T_ms=25.0, params=params)
+    assert 0.05 < tau_star < 0.95
+    star_deriv = solve_pareto_derivative(tau=tau_star, b=4, T_ms=25.0, params=params, mu_D=0.002, mu_P=0.0005)
+    assert abs(star_deriv["dU_dtau"]) < 1e-5
+
+
+def test_jensen_antifragility_bound():
+    """Verify Jensen convexity/antifragility theorem: b=1 is fragile (>0) whereas b in {4, 8} is antifragile (<0)."""
+    from aqnet.cascade import CascadeParams, jensen_antifragility_bound, solve_cascade_delay
+
+    params = CascadeParams(lam=500.0)
+    # 1. Unbatched b=1 is strictly convex / fragile in q
+    jb_b1 = jensen_antifragility_bound(tau=0.55, b=1, T_ms=25.0, params=params, q_override=0.30)
+    assert jb_b1["d2ED_dq2_ms"] > 0.0
+    assert not jb_b1["is_delay_antifragile"]
+
+    # 2. Micro-batched b=4 and b=8 are strictly concave / antifragile in q at q=0.30, T=25ms
+    for b in (4, 8):
+        jb = jensen_antifragility_bound(
+            tau=0.55, b=b, T_ms=25.0, sigma_eps=0.03, delta_max=0.05, params=params, q_override=0.30
+        )
+        assert jb["C_batch_ms"] < 0.0
+        assert jb["d2ED_dq2_ms"] < 0.0
+        assert jb["d2EP_dq2_W"] < 0.0
+        assert jb["is_delay_antifragile"]
+        assert jb["is_power_antifragile"]
+        assert jb["jensen_delay_upper_ms"] < 0.0
+
+        # Verify against two-point symmetric perturbation E[0.5 * (D(q+eps) + D(q-eps))] - D(q)
+        sigma = 0.03
+        d_center = solve_cascade_delay(0.55, b=b, T_ms=25.0, params=params, q_override=0.30)["E_D_ms"]
+        d_plus = solve_cascade_delay(0.55, b=b, T_ms=25.0, params=params, q_override=0.30 + sigma)["E_D_ms"]
+        d_minus = solve_cascade_delay(0.55, b=b, T_ms=25.0, params=params, q_override=0.30 - sigma)["E_D_ms"]
+        empirical_jensen_gap = 0.5 * (d_plus + d_minus) - d_center
+        assert empirical_jensen_gap < 0.0
+        assert jb["jensen_delay_lower_ms"] <= empirical_jensen_gap <= jb["jensen_delay_upper_ms"]

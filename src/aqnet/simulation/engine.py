@@ -281,3 +281,149 @@ def simulate_feedback(
 
     env.run(until=warmup_period + sim_duration)
     return float(np.mean(delays)) if delays else float(np.inf)
+
+
+def _sample_gamma_service(rng: np.random.Generator, mean_s: float, cv_sq: float) -> float:
+    """Sample a positive service time with exact mean `mean_s` and squared CV `cv_sq`."""
+    if mean_s <= 0.0:
+        return 0.0
+    if cv_sq <= 1e-9:
+        return mean_s
+    shape = 1.0 / cv_sq
+    scale = mean_s * cv_sq
+    return float(rng.gamma(shape, scale))
+
+
+def simulate_cascade(
+    tau: float = 0.55,
+    b: int = 4,
+    T_ms: float = 25.0,
+    params: Any | None = None,
+    q_override: float | None = None,
+    sim_duration_s: float = 30.0,
+    warmup_s: float = 3.0,
+    seed: int = 42,
+) -> dict[str, float]:
+    """
+    Discrete-event SimPy simulation of the two-station threshold-routed confidence cascade:
+    Station 1 (M/G/1 Edge NPU) -> Threshold Router q(tau) -> Station 2 ((b, T) Batch Accumulator + M/G/1 GPU).
+
+    Returns empirical means (in ms) for cross-validation against `aqnet.models.cascade.solve_cascade_delay`.
+    """
+    from aqnet.models.cascade import CascadeParams, offload_rate_q
+
+    p = params or CascadeParams()
+    q = float(q_override) if q_override is not None else offload_rate_q(tau, p)
+    q = float(np.clip(q, 0.0, 1.0))
+
+    rng = np.random.default_rng(seed)
+    env = simpy.Environment()
+
+    npu_server = simpy.Resource(env, capacity=1)
+    gpu_server = simpy.Resource(env, capacity=1)
+    batch_arrival_store = simpy.Store(env)
+
+    e2e_delays_ms: list[float] = []
+    d1_delays_ms: list[float] = []
+    w_batch_ms: list[float] = []
+    w_queue_ms: list[float] = []
+    batch_sizes: list[int] = []
+
+    T_s = T_ms / 1000.0
+    E_S1_s = p.E_S1_ms / 1000.0
+
+    def handle_frame(arrival_t: float):
+        # Station 1: Edge NPU M/G/1
+        with npu_server.request() as req:
+            yield req
+            s1 = _sample_gamma_service(rng, E_S1_s, p.C_S1_sq)
+            yield env.timeout(s1)
+
+        d1_done_t = env.now
+        d1_ms = (d1_done_t - arrival_t) * 1000.0
+
+        # Confidence threshold routing: offload with probability q
+        if rng.random() >= q:
+            if d1_done_t >= warmup_s:
+                d1_delays_ms.append(d1_ms)
+                e2e_delays_ms.append(d1_ms)
+        else:
+            if d1_done_t >= warmup_s:
+                d1_delays_ms.append(d1_ms)
+            yield batch_arrival_store.put((arrival_t, d1_done_t))
+
+    def frame_generator():
+        while True:
+            ia = float(rng.exponential(1.0 / p.lam))
+            yield env.timeout(ia)
+            env.process(handle_frame(env.now))
+
+    def execute_dispatched_batch(batch_items: list[tuple[float, float]], dispatch_t: float):
+        B_cur = len(batch_items)
+        if dispatch_t >= warmup_s:
+            batch_sizes.append(B_cur)
+            for _, t_enter_batch in batch_items:
+                w_batch_ms.append((dispatch_t - t_enter_batch) * 1000.0)
+
+        # Network serialization & DMA transfer time T_net(B_cur)
+        t_net_s = (p.t_net_0_ms + p.t_net_1_ms * B_cur) / 1000.0
+        # Station 2 GPU M/G/1 queue
+        q_enter_t = env.now
+        with gpu_server.request() as req:
+            yield req
+            q_start_t = env.now
+            t_gpu_mean_s = (p.t_gpu_0_ms + p.t_gpu_1_ms * B_cur) / 1000.0
+            s2_gpu = _sample_gamma_service(rng, t_gpu_mean_s, p.C_S2_sq)
+            yield env.timeout(s2_gpu)
+
+        # Network pipeline + GPU completion
+        yield env.timeout(t_net_s)
+        done_t = env.now
+
+        if done_t >= warmup_s:
+            wq_ms = (q_start_t - q_enter_t) * 1000.0
+            for orig_t, _ in batch_items:
+                w_queue_ms.append(wq_ms)
+                e2e_delays_ms.append((done_t - orig_t) * 1000.0)
+
+    def batch_accumulator():
+        while True:
+            # Wait for the first offloaded frame to start a renewal batch cycle
+            first_item = yield batch_arrival_store.get()
+            batch_items = [first_item]
+            if b == 1 or T_s <= 0.0:
+                env.process(execute_dispatched_batch(batch_items, env.now))
+                continue
+
+            deadline = env.now + T_s
+            while len(batch_items) < b:
+                rem = deadline - env.now
+                if rem <= 1e-12:
+                    break
+                get_ev = batch_arrival_store.get()
+                timeout_ev = env.timeout(rem)
+                res = yield simpy.AnyOf(env, [get_ev, timeout_ev])
+                if get_ev in res.events:
+                    batch_items.append(get_ev.value)
+                else:
+                    # Timeout expired; cancel the pending get request
+                    if get_ev.triggered:
+                        batch_items.append(get_ev.value)
+                    else:
+                        batch_arrival_store.get_queue.remove(get_ev)
+                    break
+
+            env.process(execute_dispatched_batch(batch_items, env.now))
+
+    env.process(frame_generator())
+    env.process(batch_accumulator())
+    env.run(until=warmup_s + sim_duration_s)
+
+    return {
+        "E_D_ms": float(np.mean(e2e_delays_ms)) if e2e_delays_ms else float("inf"),
+        "E_D1_ms": float(np.mean(d1_delays_ms)) if d1_delays_ms else float("inf"),
+        "E_W_batch_ms": float(np.mean(w_batch_ms)) if w_batch_ms else 0.0,
+        "E_W_queue_ms": float(np.mean(w_queue_ms)) if w_queue_ms else 0.0,
+        "E_B_disp": float(np.mean(batch_sizes)) if batch_sizes else 1.0,
+        "n_frames": len(e2e_delays_ms),
+    }
