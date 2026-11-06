@@ -385,3 +385,98 @@ def test_jensen_antifragility_bound():
         empirical_jensen_gap = 0.5 * (d_plus + d_minus) - d_center
         assert empirical_jensen_gap < 0.0
         assert jb["jensen_delay_lower_ms"] <= empirical_jensen_gap <= jb["jensen_delay_upper_ms"]
+
+
+def test_cascade_stationary_and_nonstationary_hysteresis():
+    """Verify cascade renewal-reward moments, Pareto MRS, IFT sensitivity, quartic hysteresis, SymPy, and SimPy."""
+    from aqnet.models.cascade_nonstationary import (
+        CascadeParams,
+        apply_hysteresis_with_safety_cap,
+        find_optimal_threshold_tau,
+        jensen_antifragility_bound,
+        simulate_nonstationary_hysteresis_simpy,
+        simulate_stationary_cascade_simpy,
+        solve_batch_timeout_moments,
+        solve_hysteresis_band,
+        solve_nonstationary_envelope,
+        solve_pareto_derivative,
+        solve_threshold_lambda_sensitivity,
+        verify_symbolic_cascade_proofs,
+    )
+
+    c_params = CascadeParams(lam=500.0)
+    tau_star = find_optimal_threshold_tau(mu_D=0.002, mu_P=0.0005, b=4, T_ms=25.0, params=c_params)
+    assert np.isclose(tau_star, 0.80188, atol=1e-5)
+
+    pareto = solve_pareto_derivative(tau_star, b=4, T_ms=25.0, params=c_params)
+    assert np.isclose(pareto["q"], 0.62002, atol=1e-5)
+    assert abs(pareto["dU_dtau"]) < 1e-6
+
+    bm4 = solve_batch_timeout_moments(0.30 * 500.0, b=4, T_ms=25.0)
+    assert np.isclose(bm4["E_B_disp"], 3.5877, atol=1e-4)
+    assert np.isclose(bm4["E_W_batch_ms"], 9.1458, atol=1e-4)
+    assert np.isclose(bm4["p_timeout"], 0.2771, atol=1e-4)
+
+    j1 = jensen_antifragility_bound(0.55, b=1, T_ms=25.0, params=c_params, q_override=0.30)
+    j4 = jensen_antifragility_bound(0.55, b=4, T_ms=25.0, params=c_params, q_override=0.30)
+    assert not j1["is_delay_antifragile"]
+    assert j4["is_delay_antifragile"]
+    assert j4["is_power_antifragile"]
+
+    # Non-stationary sensitivity & hysteresis deadband
+    s1 = solve_threshold_lambda_sensitivity(lam=500.0, b=1, params=c_params)
+    s4 = solve_threshold_lambda_sensitivity(lam=500.0, b=4, params=c_params)
+    assert s1["ift_vs_fd_abs_err"] < 1e-6
+    assert s4["ift_vs_fd_abs_err"] < 1e-6
+    assert abs(s4["dtau_dlam_per_100fps"]) < abs(s1["dtau_dlam_per_100fps"])
+
+    # Boundary KKT safety probes
+    sb_low = solve_threshold_lambda_sensitivity(lam=8.0, b=4, params=c_params)
+    sb_high = solve_threshold_lambda_sensitivity(lam=500.0, mu_D=1.0, b=4, params=c_params)
+    assert np.isfinite(sb_low["dtau_dlam_per_fps"])
+    assert np.isfinite(sb_high["dtau_dlam_per_fps"])
+
+    hb4 = solve_hysteresis_band(lam=500.0, b=4, params=c_params)
+    assert 0.01 < hb4["delta_tau_hyst_star"] < 0.08
+    assert np.isclose(hb4["delta_tau_bm_reset_star"], hb4["delta_tau_hyst_star"] * (8.0 ** 0.25), atol=1e-12)
+    assert hb4["equipartition_residual"] < 1e-12
+    assert hb4["bm_equipartition_residual"] < 1e-12
+    assert hb4["chattering_reduction_pct"] > 90.0
+
+    # Pointwise ramp probe & safety cap override
+    env_ramp = solve_nonstationary_envelope(
+        lam_t=500.0, lam_lip=400.0, W_s=0.10, sigma_lam=0.0, b=4, params=c_params, mode="pointwise"
+    )
+    assert np.isclose(env_ramp["lam_sup_fps"], 540.0, atol=1e-9)
+    assert np.isclose(env_ramp["lam_window_avg_sup_fps"], 520.0, atol=1e-9)
+
+    env_edge = solve_nonstationary_envelope(
+        lam_t=370.491446, lam_lip=0.0, sigma_lam=0.0, b=1, rho_max=0.85
+    )
+    assert env_edge["q_max_env"] < 1.0
+    assert env_edge["rho_G_envelope_under_burst"] <= 0.85 + 1e-6
+
+    tau_capped, switched = apply_hysteresis_with_safety_cap(0.80, 0.78, 0.79, 0.034)
+    assert np.isclose(tau_capped, 0.79, atol=1e-12)
+    assert switched is True
+
+    # SymPy symbolic verification
+    sym = verify_symbolic_cascade_proofs()
+    assert sym["sympy_verified"] is True
+    assert sym["theorem2_mrs_delay_residual"] == "0"
+    assert sym["proposition3_ift_residual"] == "0"
+    assert sym["theorem6_quartic_root_residual"] == "0"
+    assert sym["theorem6_equipartition_residual"] == "0"
+    assert sym["theorem6_bm_occupation_Ex2"] == "delta**2/6"
+    assert sym["theorem6_bm_reset_quartic_root_residual"] == "0"
+
+    # SimPy stationary & non-stationary checks
+    sim_stat = simulate_stationary_cascade_simpy(q=0.30, lam=500.0, b=4, T_ms=25.0, duration_s=15.0, warmup_s=3.0)
+    assert sim_stat["E_D_rel_err_pct"] < 2.0
+    assert sim_stat["littles_law_rel_err"] < 0.01
+
+    sim_ns = simulate_nonstationary_hysteresis_simpy(duration_s=8.0, warmup_s=2.0, b=4, params=c_params, seed=9)
+    assert sim_ns["max_thinning_accept_prob"] <= 1.0
+    assert sim_ns["empirical_chattering_reduction_pct"] > 80.0
+
+

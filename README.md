@@ -3,7 +3,7 @@
 [![PyPI - Version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/aqnet/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](./pyproject.toml)
 [![CI](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml/badge.svg)](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml)
 
 > **Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions**  
@@ -93,6 +93,7 @@ By synthesizing classical queueing theory, renewal-reward theory, and fixed-poin
 | **Case 3: Tandem Chain** | Multi-hop stage-wise attacks | Hypoexponential Sojourn Matching | Multi-server journey times with cumulative attack probabilities | [`3_tandem_chain/tandem.py`](./3_tandem_chain/tandem.py) |
 | **Case 4: Feedforward Network** | $N$-node pipeline attacks | Gamma Moment Matching & Truncated Expectations | Non-linear traffic amplification loops, stage-wise attenuation, and stability envelope contraction | [`4_n_node_feedforward/n_node_feedforward.py`](./4_n_node_feedforward/n_node_feedforward.py) |
 | **Case 5: Feedback Mesh** | $N$-node symmetric feedback | Erlang Multi-Visit Path Traversal | Distributed mesh routing prevents single-node bottlenecking | [`5_n_node_feedback/n_node_with_feedback.py`](./5_n_node_feedback/n_node_with_feedback.py) |
+| **Case 6: Two-Tier Edge–Cloud Cascade** | Non-stationary bursts & calibration jitter | Renewal-Reward $(b, T)$, IFT & Quartic Hysteresis | Micro-batching $B_G \in \{4,8\}$ is delay/power-antifragile; quartic hysteresis cuts chattering by $87.87\%$ ($86.86\%$ 5-seed) | [`src/aqnet/cascade.py`](./src/aqnet/cascade.py) |
 
 ---
 
@@ -238,4 +239,4 @@ If you find this codebase or theoretical framework helpful in your research, ple
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see [`pyproject.toml`](./pyproject.toml) for details.

@@ -57,6 +57,17 @@ class CascadeParams:
     e_dyn_G_mJ: float = 137.129  # Dynamic Tensor Core + GDDR7 energy per offloaded frame (mJ)
     e_net_mJ: float = 2.50  # Network NIC + switch dynamic energy per offloaded frame (mJ)
 
+    def q_of_tau(self, tau: float) -> float:
+        return offload_rate_q(tau, self)
+
+    def tau_of_q(self, q: float) -> float:
+        from scipy.stats import beta as _beta_dist
+        if q <= 0.0:
+            return 0.0
+        if q >= 1.0:
+            return 1.0
+        return float(_beta_dist.ppf(q, self.beta_a, self.beta_b))
+
 
 def offload_rate_q(tau: float, params: CascadeParams | None = None) -> float:
     """Evaluate offload probability q(tau) = P(G < tau) = F_G(tau) via regularized incomplete Beta function."""
@@ -810,7 +821,25 @@ def jensen_antifragility_bound(
     }
 
 
+
+from aqnet.models.cascade_nonstationary import (
+    apply_hysteresis_with_safety_cap,
+    simulate_nonstationary_hysteresis_simpy,
+    simulate_stationary_cascade_simpy,
+    solve_hysteresis_band,
+    solve_nonstationary_envelope,
+    solve_threshold_lambda_sensitivity,
+    verify_symbolic_cascade_proofs,
+)
+
 __all__ = [
+    "apply_hysteresis_with_safety_cap",
+    "simulate_nonstationary_hysteresis_simpy",
+    "simulate_stationary_cascade_simpy",
+    "solve_hysteresis_band",
+    "solve_nonstationary_envelope",
+    "solve_threshold_lambda_sensitivity",
+    "verify_symbolic_cascade_proofs",
     "CascadeParams",
     "cascade_accuracy",
     "conditional_oracle_gain",

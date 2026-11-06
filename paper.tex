@@ -195,8 +195,8 @@ This theoretical divergence is confirmed in Figure \ref{fig:single_node}.
 \end{figure}
 
 \section{Multi-Hop Feedforward Networks}
-\subsection{Hypoexponential Journey Time and Gamma Moment-Matching}
-In a multi-hop feedforward network, a packet must traverse a sequence of $N$ distinct nodes in series: Node $0 \to \text{Node } 1 \to \dots \to \text{Node } (N-1)$. Let $\Lambda_j^*$ be the arrival rate at node $j$, and let $\mu_j = \mu$ be the service rate. By Burke's theorem and Jackson network approximations, each node $j$ operates as an $M/M/1$ queue with sojourn time $X_j \sim \text{Exp}(\mu - \Lambda_j^*)$:
+\subsection{Hypoexponential Journey Time \& Gamma Matching}
+In a multi-hop feedforward network, a packet must traverse a sequence of $N$ distinct nodes in series: Node $0 \to \text{Node } 1 \to \dots \to \text{Node } (N-1)$. Let $\Lambda_j^*$ be the arrival rate at node $j$, and let $\mu_j = \mu$ be the service rate. By Burke's theorem~\cite{burke1956output} and Jackson network approximations~\cite{jackson1957networks, kleinrock1976computer}, each node $j$ operates as an $M/M/1$ queue with sojourn time $X_j \sim \text{Exp}(\mu - \Lambda_j^*)$:
 \begin{equation}
 E[X_j] = \frac{1}{\mu - \Lambda_j^*}, \quad \text{Var}(X_j) = \frac{1}{(\mu - \Lambda_j^*)^2}
 \end{equation}
@@ -208,7 +208,7 @@ The exact mean and variance of $S_N$ are:
 \begin{equation}
 \mu_S = E[S_N] = \sum_{j=0}^{N-1} \frac{1}{\mu - \Lambda_j^*}, \quad \sigma_S^2 = \text{Var}(S_N) = \sum_{j=0}^{N-1} \frac{1}{(\mu - \Lambda_j^*)^2}
 \end{equation}
-Because the exact Hypoexponential CDF involves complex combinatorial sums of exponentials that become numerically unstable for large $N$, we employ a two-parameter \textbf{Gamma moment-matching approximation} $S_N \sim \text{Gamma}(k, \theta)$ with shape $k$ and scale $\theta$:
+Because the exact Hypoexponential CDF involves complex combinatorial sums of exponentials that become numerically unstable for large $N$, we employ a two-parameter \textbf{Gamma moment-matching approximation}~\cite{cox1955use, altiok1985approximate, ross1996stochastic} $S_N \sim \text{Gamma}(k, \theta)$ with shape $k$ and scale $\theta$:
 \begin{equation}
 k = \frac{\mu_S^2}{\sigma_S^2} = \frac{\left(\sum_{j=0}^{N-1} \frac{1}{\mu - \Lambda_j^*}\right)^2}{\sum_{j=0}^{N-1} \frac{1}{(\mu - \Lambda_j^*)^2}}, \quad \theta = \frac{\sigma_S^2}{\mu_S} = \frac{\sum_{j=0}^{N-1} \frac{1}{(\mu - \Lambda_j^*)^2}}{\sum_{j=0}^{N-1} \frac{1}{\mu - \Lambda_j^*}}
 \label{eq:gamma_moments}
@@ -309,7 +309,7 @@ confirming global flow conservation in stable regimes.
     \label{fig:tandem_combined}
 \end{figure}
 
-\section{Case Study 5: \texorpdfstring{$N$}{N}-Node Symmetric Feedback Meshes}
+\section{Case Study 5: \texorpdfstring{$N$}{N}-Node Feedback Meshes}
 \subsection{Topology, Routing Matrix, and Jackson Symmetry}
 Consider an interconnected network of $N$ symmetric queueing nodes. External Poisson traffic arrives at each node $i \in \{0, \dots, N-1\}$ with rate $\lambda$ (total external arrival rate $N\lambda$). Each node has service rate $\mu$. Upon completing service at any node:
 \begin{itemize}
@@ -391,10 +391,10 @@ Table \ref{tab:theory_synthesis} provides a comprehensive synthesis of the theor
 
 \begin{table}[ht]
 \centering
-\small
 \caption{Consolidated theoretical formulations across all five network case studies.}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lp{3.2cm}p{4.2cm}p{5.5cm}@{}}
+{\scriptsize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lp{2.1cm}p{3.4cm}p{4.6cm}@{}}
 \toprule
 \textbf{Case Study} & \textbf{Effective Load $\rho$} & \textbf{Success Prob $P_{\text{succ}}$} & \textbf{End-to-End Delay $E[D]$} \\ \midrule
 \textbf{Case 1: Destruction} & $\frac{\Lambda^*(1-p)}{\mu}$ & $(1-p)[1 - \rho e^{-(\mu - \Lambda^*(1-p))T}]$ & $\frac{1}{P_{\text{succ}}}[E[W_q] + \frac{1-p}{\mu}] + (\frac{1}{P_{\text{succ}}}-1)B$ \\ \addlinespace
@@ -402,28 +402,27 @@ Table \ref{tab:theory_synthesis} provides a comprehensive synthesis of the theor
 \textbf{Case 3: 3-Node Tandem} & $\frac{\Lambda^*}{\mu}$ & $(1-p)^3 F_{\text{Erlang}}(W; 3, \mu-\Lambda^*)$ & $\frac{3}{P_{\text{succ}}(\mu - \Lambda^*)}$ \\ \addlinespace
 \textbf{Case 4: General $N$-Tandem} & $\frac{\Lambda_0^*}{\mu}$ at Node 0 & $(1-p)^N F_\Gamma(W; k, \theta)$ & $(E[A]-1)E[D_{\text{fail}}] + \mu_S \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}$ \\ \addlinespace
 \textbf{Case 5: $N$-Node Feedback} & $\frac{\lambda E[V]}{\mu P_{\text{succ}}}$ & $\sum_{k=1}^\infty (1-p)^k \frac{N^{k-1}}{(N+1)^k} F_k(W)$ & $(E[A]-1)E[D_{\text{fail}}] + \frac{1}{P_{\text{succ}}}\sum_k P_{\text{succ}, k}\frac{k}{\gamma}\frac{F_{k+1}(W)}{F_k(W)}$ \\ \bottomrule
-\end{tabular}%
-}
+\end{tabular*}}
 \label{tab:theory_synthesis}
 \end{table}
 
 \section{Experimental Validation}
-The proposed analytical models were validated against discrete-event simulations implemented in SimPy. Simulations were executed with 200 replications, a warm-up period of 2,000 time units, and an active observation horizon of 20,000 time units per replication. 
+The proposed analytical models were validated against discrete-event simulations implemented in SimPy~\cite{matloff2008introduction}. Simulations were executed with 200 replications, a warm-up period of 2,000 time units, and an active observation horizon of 20,000 time units per replication. 
 
 \begin{table}[ht]
 \centering
 \caption{Cross-validation of analytical models vs. high-fidelity SimPy simulations.}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lccccc@{}}
+{\scriptsize
+\setlength{\tabcolsep}{1.5pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lp{5.0cm}cccc@{}}
 \toprule
-\textbf{Network Scenario} & \textbf{Parameters} & \textbf{Theory Delay (s)} & \textbf{Sim Delay (s)} & \textbf{Abs. Gap} & \textbf{Rel. Error (\%)} \\ \midrule
+\textbf{Scenario} & \textbf{Parameters} & \textbf{Theory (s)} & \textbf{Sim (s)} & \textbf{Gap} & \textbf{Err. (\%)} \\ \midrule
 \textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2, B=0.03$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
 \textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2$ & 0.1525 & 0.1523 & 0.0002 & 0.15\% \\
 \textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
-\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
+\textbf{Case 4: Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
 \textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10, W=50$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
-\end{tabular}%
-}
+\end{tabular*}}
 \label{tab:validation}
 \end{table}
 
