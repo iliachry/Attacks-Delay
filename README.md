@@ -1,6 +1,6 @@
 # aqnet — Adversarial Queue Networks
 
-[![PyPI - Version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/aqnet/)
+[![PyPI - Version](https://img.shields.io/badge/pypi-v0.2.0-blue.svg)](https://pypi.org/project/aqnet/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./pyproject.toml)
@@ -58,18 +58,27 @@ print(f"Simulated Sojourn Time: {sim_delay:.4f} s")
 # 3. Analyze multi-hop tandem chain (Case 3)
 tandem_delay = aqnet.solve_tandem_theory(p=0.1, N=3, mu=2.0, lambda_arrival=0.15, W=8.0)
 print(f"Tandem (N=3) Delay: {tandem_delay:.4f} s")
+
+# 4. Closed-form Wright-omega / Lambert-W_0 Saddle-Node retry bifurcation (aqnet v0.2.0)
+sn = aqnet.solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+dual = aqnet.solve_dual_fixed_points(3.5, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+print(f"Saddle-Node Fold: Lambda_SN*={sn.Lambda_sn:.4f}, lambda_crit^SN={sn.lambda_crit_sn:.4f}")
+print(f"Dual Branches: stable={dual.Lambda_stable:.4f}, unstable_separatrix={dual.Lambda_unstable:.4f}")
 ```
 
 ### Command Line Interface (CLI)
 
-`aqnet` comes with a built-in CLI for rapid experimentation and benchmarking:
+`aqnet` comes with a built-in CLI (`run`, `bifurcation`, `bench`) for rapid experimentation, Saddle-Node bifurcation analysis, and benchmarking:
 
 ```bash
-# Run benchmark across all 5 topologies:
+# Run benchmark across all 5 topologies + Saddle-Node fold:
 aqnet bench
 
 # Simulate specific topology:
 aqnet run --topology tandem --nodes 3 --p 0.1 --lambda-arr 0.15 --reps 20
+
+# Analyze Saddle-Node retry bifurcation, dual branches, and SymPy proofs:
+aqnet bifurcation --topology one_node_modification --lambda-arr 3.5 --p 0.25 --mu 10.0 --W 1.0 --json
 ```
 
 ---
@@ -80,7 +89,7 @@ The reliable transport of data through adversarial networks requires a rigorous 
 
 This repository and package provides the complete analytical framework, discrete-event simulation engine (SimPy), benchmark dataset, and LaTeX manuscript files for studying packet sojourn times across **five foundational network topologies** subject to active packet destruction and modification attacks.
 
-By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, this project validates closed-form and semi-analytical models against discrete-event simulations, demonstrating exact agreement across all operational regimes with relative errors consistently below 1%.
+By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, this project validates closed-form and semi-analytical models against discrete-event simulations, demonstrating close agreement across all operational regimes with relative errors consistently below 2% (and below 0.30% across all multi-node topologies).
 
 ---
 
@@ -94,6 +103,8 @@ By synthesizing classical queueing theory, renewal-reward theory, and fixed-poin
 | **Case 4: Feedforward Network** | $N$-node pipeline attacks | Gamma Moment Matching & Truncated Expectations | Non-linear traffic amplification loops, stage-wise attenuation, and stability envelope contraction | [`4_n_node_feedforward/n_node_feedforward.py`](./4_n_node_feedforward/n_node_feedforward.py) |
 | **Case 5: Feedback Mesh** | $N$-node symmetric feedback | Erlang Multi-Visit Path Traversal | Distributed mesh routing prevents single-node bottlenecking | [`5_n_node_feedback/n_node_with_feedback.py`](./5_n_node_feedback/n_node_with_feedback.py) |
 | **Case 6: Two-Tier Edge–Cloud Cascade** | Non-stationary bursts & calibration jitter | Renewal-Reward $(b, T)$, IFT & Quartic Hysteresis | Micro-batching $B_G \in \{4,8\}$ is delay/power-antifragile; quartic hysteresis cuts chattering by $87.87\%$ ($86.86\%$ 5-seed) | [`src/aqnet/cascade.py`](./src/aqnet/cascade.py) |
+| **Case 7: Saddle-Node Retry Bifurcation** | Timeout-driven retry fold & separatrix escape | Wright-$\omega$ / Lambert-$W_0$ & Normal Form $c_2$ | Closed-form fold $\Lambda_{\text{SN}}^* = [\omega(\mu T+1)-1]/T$, Case 1 structural $p$-invariance, and $O((\lambda_{\text{crit}}^{\text{SN}}-\lambda)^{-1/2})$ scaling | [`src/aqnet/models/bifurcation.py`](./src/aqnet/models/bifurcation.py) |
+| **Interactive Web Studio (`web/`)** | All 5 topologies + Burst trace offering | Subtractive Design Laws `L0`–`L10` | Interactive phase portrait `<canvas>`, Law `L10` burst separatrix test, Chameleon 3-theme switcher, and SymPy `<dialog>` ledger | [`web/index.html`](./web/index.html) |
 
 ---
 

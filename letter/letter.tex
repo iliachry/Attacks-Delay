@@ -72,7 +72,7 @@ This letter presents a unified analytical framework characterizing adversarial d
     \item \textbf{Case 4: General $N$-Node Feedforward Network} --- stage attenuation $\Lambda_i^* = \Lambda_0^*(1-p)^i$, Hypoexponential moment-matching, and a 100\% stable operating envelope.
     \item \textbf{Case 5: Symmetric $N$-Node Feedback Mesh} --- Erlang-$k$ visit summations under Jackson routing, proving uniform load-balancing prevents bottlenecking.
 \end{enumerate}
-All five models are validated via SimPy simulations \cite{matloff2008introduction} with errors below 2\% overall and under 0.65\% for multi-node topologies.
+All five models are validated via SimPy simulations \cite{matloff2008introduction} with errors below 2\% overall and under 0.30\% for multi-node topologies.
 
 \section{Universal Renewal-Reward Framework}
 Consider a queueing network with external Poisson arrivals at rate $\lambda$ (Fig.~\ref{fig:model}). Each packet undergoes a sequence of independent and identically distributed (i.i.d.) transmission attempts until successful delivery. An adversary corrupts or destroys each attempt independently with probability $p$. A global timeout window $W$ aborts any attempt whose cumulative delay exceeds $W$. Failed packets are retransmitted from the origin after a deterministic backoff $B \ge 0$.
@@ -89,15 +89,15 @@ Because every failed attempt generates a retransmission, the total arrival rate 
 \Lambda^* = \lambda \cdot E[A] = \frac{\lambda}{P_{\text{succ}}(\Lambda^*)}
 \label{eq:fixed_point}
 \end{equation}
-Equation~\eqref{eq:fixed_point} is a non-linear fixed-point equation. Because queueing delays increase monotonically with $\Lambda^*$, the success probability $P_{\text{succ}}(\Lambda^*)$ is monotonically decreasing in $\Lambda^*$. A stable steady-state exists if and only if \eqref{eq:fixed_point} admits a unique root satisfying the topology-specific bottleneck stability criterion: $\Lambda^* < \Lambda_{\text{crit}}$.
+Equation~\eqref{eq:fixed_point} is a non-linear mean-field fixed-point equation, equivalently expressed via the effective throughput map $\Gamma(\Lambda^*) \triangleq \Lambda^* P_{\text{succ}}(\Lambda^*) = \lambda$ (or $\Lambda^* P_{\text{succ}}(\Lambda^*)/E[V](\Lambda^*) = \lambda$ in feedback meshes). Because queueing delays increase monotonically with $\Lambda^*$, $P_{\text{succ}}(\Lambda^*)$ decreases monotonically in $\Lambda^*$, whereas $\Gamma(\Lambda^*)$ is unimodal on $(0, \Lambda_{\text{crit}})$. Under finite timeout $W < \infty$, two fixed points ($\Lambda_{\text{stable}}^* < \Lambda_{\text{SN}}^* < \Lambda_{\text{unstable}}^*$) coexist for every subcritical arrival rate $\lambda < \lambda_{\text{crit}}^{\text{SN}} \triangleq \max_{\Lambda^* \in (0, \Lambda_{\text{crit}})} \Gamma(\Lambda^*)$ and coalesce at the Saddle-Node fold $\Lambda_{\text{SN}}^* < \Lambda_{\text{crit}}$.
 
 \section{Single-Node Topologies (Cases 1 \& 2)}
 Consider an isolated $M/M/1$ queue with service rate $\mu$, timeout $W$, and attack probability $p$.
 
 \subsection{Case 1: Pre-Service Destruction Attacks}
-In destruction attacks, the adversary intercepts packets at the queue head prior to service. Attacked packets exit without consuming server processing time. Only surviving packets enter the server, so the effective service load is $\lambda_{\text{eff}} = \Lambda^*(1 - p) \implies \rho = \Lambda^*(1 - p)/\mu < 1$. The system operates as an $M/M/1$ queue with arrival rate $\lambda_{\text{eff}}$. The cumulative distribution of total time in system (waiting $W_q$ plus service $S$) is $P(W_q + S \le t) = 1 - \rho e^{-(\mu - \lambda_{\text{eff}})t}$. An attempt succeeds if it escapes attack and completes before timeout $W$:
+In destruction attacks, the adversary intercepts packets at the queue head prior to service. Attacked packets exit without consuming server processing time. Only surviving packets enter the server, so the effective service load is $\lambda_{\text{eff}} = \Lambda^*(1 - p) \implies \rho = \Lambda^*(1 - p)/\mu < 1$. The system operates as an $M/M/1$ queue with arrival rate $\lambda_{\text{eff}}$. The cumulative distribution of total time in system (waiting $W_q$ plus service $S$) for a non-attacked packet is $P(W_q + S \le t \mid \text{not attacked}) = 1 - e^{-(\mu - \lambda_{\text{eff}})t}$. An attempt succeeds if it escapes attack and completes before timeout $W$:
 \begin{equation}
-P_{\text{succ}} = (1 - p)\!\left[1 - \frac{\Lambda^*(1\!-\!p)}{\mu}\, e^{-(\mu - \Lambda^*(1-p))W}\right]
+P_{\text{succ}} = (1 - p)\!\left[1 - e^{-(\mu - \Lambda^*(1-p))W}\right]
 \label{eq:psucc_destr}
 \end{equation}
 The expected delay per attempt comprises queue waiting plus conditional service: $E[D_{\text{attempt}}] = E[W_q] + (1-p)/\mu$. Substituting into \eqref{eq:renewal}:
@@ -136,8 +136,8 @@ Stability requires $\Lambda^* < \mu$, which bounds the external arrival rate by 
     \vspace{-3mm}
 \end{figure}
 
-\begin{theorem}[Capacity Divergence]
-Let $\Lambda_{\emph{crit}}^{\emph{dest}}$ and $\Lambda_{\emph{crit}}^{\emph{mod}}$ denote the critical saturation capacities under pre-service destruction and post-service modification attacks. Then $\Lambda_{\emph{crit}}^{\emph{dest}} / \Lambda_{\emph{crit}}^{\emph{mod}} = (1 - p)^{-1}$. Post-service modification degrades sustainable system throughput by an exact factor of $(1-p)^{-1}$ relative to pre-service destruction. At $p = 0.5$, modification attacks halve the sustainable throughput (Fig.~\ref{fig:single}).
+\begin{theorem}[Internal Saturation vs.\ External Fold Capacity Divergence]
+Let $\Lambda_{\emph{crit}}^{\emph{dest}} = \mu/(1-p)$ and $\Lambda_{\emph{crit}}^{\emph{mod}} = \mu$ denote the internal attempt-rate saturation limits ($\rho \to 1^-$) under pre-service destruction and post-service modification attacks. Then $\Lambda_{\emph{crit}}^{\emph{dest}} / \Lambda_{\emph{crit}}^{\emph{mod}} = (1 - p)^{-1}$, and for any finite timeout $W < \infty$, the critical external throughput capacities $\lambda_{\emph{crit}}^{\emph{SN}} = \max_{\Lambda^*} \Lambda^* P_{\emph{succ}}(\Lambda^*)$ likewise satisfy $\lambda_{\emph{crit}}^{\emph{SN,dest}} / \lambda_{\emph{crit}}^{\emph{SN,mod}} = (1 - p)^{-1}$. At $p = 0.5$, modification attacks halve the sustainable external throughput (Fig.~\ref{fig:single}).
 \end{theorem}
 
 \section{Feedforward Network Topologies (Cases 3 \& 4)}
@@ -169,9 +169,9 @@ P_{\text{succ}} = (1 - p)^N \frac{\gamma(k, W/\theta)}{\Gamma(k)}
 Conditional expectations for successful and failed attempts are:
 \begin{enumerate}
     \setlength{\itemsep}{1pt}
-    \item \textbf{Successful Attempt Duration:} Using truncated Gamma moments:
+    \item \textbf{Successful Attempt Duration:} Using truncated Gamma moments ($P(s, x) = \gamma(s, x)/\Gamma(s)$ and $\mu_S = k\theta$):
     \begin{equation}
-    E[D_{\text{succ}}] = E[S_N \mid S_N \le W] = \mu_S \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}
+    E[D_{\text{succ}}] = \mu_S \frac{P(k\!+\!1, W/\theta)}{P(k, W/\theta)} = \theta \frac{\gamma(k\!+\!1, W/\theta)}{\gamma(k, W/\theta)}
     \label{eq:trunc_succ}
     \end{equation}
     \item \textbf{Failed Attempt Duration:} Failures arise from two disjoint events: (i) an attack at stage $i$ (probability $(1-p)^i p$) with duration $\sum_{j=0}^i T_j$, or (ii) an end-to-end timeout after surviving all stages (probability $(1-p)^N (1 - p_{\text{no\_to}})$) with duration $E[S_N \mid S_N > W] = \mu_S \frac{1 - \gamma(k+1, W/\theta)/\Gamma(k+1)}{1 - \gamma(k, W/\theta)/\Gamma(k)}$:
@@ -214,12 +214,12 @@ Consider an interconnected network of $N$ symmetric queueing nodes with external
 
 By Jackson symmetry \cite{jackson1957networks}, every node maintains the identical arrival rate $\Lambda^*$ and clearance rate $\gamma = \mu - \Lambda^*$. The duration of $k$ consecutive node visits follows an Erlang-$k$ distribution $S_k \sim \text{Erlang}(k, \gamma)$ with CDF $F_k(W) = 1 - \sum_{j=0}^{k-1} \frac{(\gamma W)^j e^{-\gamma W}}{j!}$ ($F_0(W) \equiv 1$).
 
-Defining reach weights $u_k = (1-p)^{k-1} (\frac{N}{N+1})^{k-1} F_{k-1}(W)$, the expected server visits per attempt $E[V]$ and success probability $P_{\text{succ}}$ are:
+Defining unconditioned routing-and-survival weights $w_k = (1-p)^{k-1} (\frac{N}{N+1})^{k-1}$ and timeout-surviving reach weights $u_k = w_k F_{k-1}(W)$, the expected server visits per attempt $E[V]$ and success probability $P_{\text{succ}}$ are:
 \begin{equation}
 E[V] = \sum_{k=1}^\infty u_k, \quad P_{\text{succ}} = \sum_{k=1}^\infty (1 - p)^k \frac{N^{k-1}}{(N+1)^k} F_k(W)
 \label{eq:mesh_series}
 \end{equation}
-The fixed-point traffic balance at every node satisfies $\Lambda^* = \lambda \frac{E[V](\Lambda^*)}{P_{\text{succ}}(\Lambda^*)}$. Conditional durations are $E[D_{\text{succ}}] = P_{\text{succ}}^{-1} \sum_k P_{\text{succ}, k} \frac{k}{\gamma} \frac{F_{k+1}(W)}{F_k(W)}$ and $E[D_{\text{fail}}] = \frac{\sum_k (P_{\text{att}, k} + P_{\text{to}, k})\frac{k}{\gamma}}{\sum_k (P_{\text{att}, k} + P_{\text{to}, k})}$, where $P_{\text{att}, k} = u_k p$ and $P_{\text{to}, k} = u_k(1-p)[F_{k-1}(W) - F_k(W)]$.
+The fixed-point traffic balance at every node satisfies $\Lambda^* = \lambda \frac{E[V](\Lambda^*)}{P_{\text{succ}}(\Lambda^*)}$. Conditional durations are $E[D_{\text{succ}}] = P_{\text{succ}}^{-1} \sum_k P_{\text{succ}, k} \frac{k}{\gamma} \frac{F_{k+1}(W)}{F_k(W)}$ and $E[D_{\text{fail}}] = \frac{\sum_k [P_{\text{att}, k}(\frac{1}{\gamma} + \frac{k-1}{\gamma}\frac{F_k(W)}{F_{k-1}(W)}) + P_{\text{to}, k}(W + \frac{1}{\gamma})]}{\sum_k (P_{\text{att}, k} + P_{\text{to}, k})}$, where $P_{\text{att}, k} = u_k p$ and $P_{\text{to}, k} = w_k(1-p)[F_{k-1}(W) - F_k(W)]$.
 
 \begin{figure}[t]
     \centering
@@ -233,17 +233,17 @@ The fixed-point traffic balance at every node satisfies $\Lambda^* = \lambda \fr
 \centering
 \caption{Consolidated Analytical Models vs.\ SimPy Validation.}
 \vspace{-1mm}
-\resizebox{\columnwidth}{!}{%
-\begin{tabular}{@{}lccccc@{}}
+{\scriptsize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lccccc@{}}
 \toprule
-\textbf{Case Study} & \textbf{Capacity $\Lambda_{\text{crit}}$} & \textbf{Theory (s)} & \textbf{Sim (s)} & \textbf{Abs.\ Gap} & \textbf{Error} \\ \midrule
+\textbf{Case Study} & \textbf{Cap.\ $\Lambda_{\max}$} & \textbf{Theory (s)} & \textbf{Sim (s)} & \textbf{Gap} & \textbf{Error} \\ \midrule
 1: Destruction & $\mu/(1-p)$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
 2: Modification & $\mu$ & 0.1525 & 0.1523 & 0.0002 & 0.15\% \\
-3: 3-Tandem & $\mu P_{\text{succ}}$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
+3: 3-Tandem & $\mu P_{\text{succ}}$ & 2.2938 & 2.2965 & 0.0027 & 0.12\% \\
 4: $N$-Feedforward & $\mu$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
-5: Feedback Mesh & $\mu$ & 31.606 & 31.804 & 0.1980 & 0.62\% \\ \bottomrule
-\end{tabular}%
-}
+5: Feedback Mesh & $\mu$ & 31.888 & 31.804 & 0.0848 & 0.27\% \\ \bottomrule
+\end{tabular*}}
 \label{tab:master}
 \vspace{-2mm}
 \end{table}
@@ -251,9 +251,11 @@ The fixed-point traffic balance at every node satisfies $\Lambda^* = \lambda \fr
 \textit{Structural Contrast with Tandem Chains:} In feedforward chains, Node~0 must process all retransmissions, creating an asymmetric bottleneck. In contrast, in symmetric meshes retransmissions re-enter the network and distribute uniformly across all $N$ servers. This load-balancing prevents localized queue explosion and yields resilient delay scaling (Fig.~\ref{fig:feedback} and Table~\ref{tab:master}).
 
 \section{Experimental Validation}
-The analytical models were validated against discrete-event simulations implemented in SimPy \cite{matloff2008introduction}, executing 30--200 independent replications with 5\,000--10\,000 time units per run after warmup. Table~\ref{tab:master} presents cross-validation across all five cases. Relative errors remain below 2\% in all cases, and strictly below 0.65\% across multi-node topologies. Specifically, under identical workloads ($\mu = 10, \lambda = 1.44, p = 0.2, W = 2$), modification attacks induce an 18.6\% delay surge over destruction ($0.1525$\,s vs.\ $0.1286$\,s), matching theory within 0.15\% error and validating Theorem~1. In 3-node and 4-node chains, Gamma moment-matching achieves exceptional accuracy (0.23\% and 0.15\% error). In the 10-node feedback mesh, theory aligns with simulation within 0.62\% error (the minor gap arises from truncating the infinite visit series at $k = 200$).
+The analytical models were validated against discrete-event simulations implemented in SimPy \cite{matloff2008introduction}, executing 30--200 independent replications with 5\,000--10\,000 time units per run after warmup. Table~\ref{tab:master} presents cross-validation across all five cases. Relative errors remain below 2\% in all cases, and strictly below 0.30\% across multi-node topologies. Specifically, under identical workloads ($\mu = 10, \lambda = 1.44, p = 0.2, W = 2$), modification attacks induce an 18.6\% delay surge over destruction ($0.1525$\,s vs.\ $0.1286$\,s), matching theory within 0.15\% error and validating Theorem~1. In 3-node and 4-node chains, Gamma moment-matching achieves exceptional accuracy (0.12\% and 0.15\% error). In the 10-node feedback mesh, theory aligns with simulation within 0.27\% error.
 
 \section{Engineering Takeaways \& Design Guidelines}
+\textit{Theorem 2 (Wright-$\omega$ Saddle-Node Retry Bifurcation):} Under finite timeout $T$, mean-field flow conservation $\Gamma(\Lambda^*) \triangleq \Lambda^* P_{\text{succ}}(\Lambda^*) = \lambda$ undergoes a Saddle-Node fold at $(\Lambda_{\text{SN}}^*, \lambda_{\text{crit}}^{\text{SN}})$. For post-service modification, $\partial\Gamma_{\text{mod}}/\partial\Lambda^* = 0$ yields the exact Wright-$\omega$ / Lambert-$W_0$ threshold $\Lambda_{\text{SN}}^{\text{mod}} = [\omega(\mu T + 1) - 1]/T$ and $\lambda_{\text{crit}}^{\text{SN,mod}}(p) = (1-p)[\omega(\mu T + 1) - 1]^2 / [T\omega(\mu T + 1)]$, whereas under pre-service destruction $\Gamma_{\text{dest}}(\Lambda^*) = x(1 - e^{-(\mu-x)T})$ with $x=(1-p)\Lambda^*$ attains its fold at $\Lambda_{\text{SN}}^{\text{dest}} = [\omega(\mu T + 1) - 1]/[(1-p)T]$ with a $p$-invariant critical external capacity $\lambda_{\text{crit}}^{\text{SN,dest}}(\mu, T) = [\omega(\mu T + 1) - 1]^2 / [T\omega(\mu T + 1)]$. For $\lambda < \lambda_{\text{crit}}^{\text{SN}}$, stable ($\Lambda_{\text{stable}}^*$) and unstable ($\Lambda_{\text{unstable}}^*$) fixed-point branches coexist and collide as $\Delta\Lambda_{\text{sep}} \approx 2\sqrt{(\lambda_{\text{crit}}^{\text{SN}} - \lambda)/c_2}$ as $\lambda \to \lambda_{\text{crit}}^{\text{SN}-}$.
+
 The analytical framework yields three actionable design rules: (i)~\textbf{Timeout Tuning ($W$):} $W$ should be dimensioned to the $1 - \epsilon$ quantile of the unattacked journey distribution; smaller $W$ triggers premature retransmissions that exacerbate the feedback loop, while excessive $W$ delays failure recovery. (ii)~\textbf{Backoff Dampening ($B$):} While backoff adds delay linearly ($E[D] \propto B$), setting $B > 0$ paces re-injected attempts, dampening peak burst arrivals at bottleneck queues. (iii)~\textbf{Capacity Provisioning:} In feedforward chains, Node~0 must be provisioned with capacity $\mu_0 > \mu / (1-p)^N$ to absorb origin retries, whereas symmetric mesh networks distribute retries uniformly across all $N$ servers.
 
 \section{Conclusion}

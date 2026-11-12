@@ -51,15 +51,14 @@ def solve_feedback_network_theory(N, mu, lambda_arr, p, W):
             e_d_succ_num += p_succ_k * (k / gamma_rate) * (f_k_plus_1 / f_k if f_k > 0 else 1)
             
             # 3. Probability of failure at visit k (Attack or Timeout)
-            # Attack at k: prob reach k * attacked at k
+            # Attack at k: surviving k-1 visits within W plus 1/gamma at visit k
             p_attack_k = term * p * f_k_minus_1
-            e_d_fail_num += p_attack_k * (k / gamma_rate) # Spent visit k
+            e_d_att_k = (1 / gamma_rate) + ((k - 1) / gamma_rate) * (f_k / f_k_minus_1 if f_k_minus_1 > 0 else 1)
+            e_d_fail_num += p_attack_k * e_d_att_k
             
-            # Timeout at k: prob reach k * not attacked at k * (not exit or exit) * timeout
-            # prob not exit or exit = 1.
-            # Timeout happens if S_k > W given S_{k-1} <= W
-            p_timeout_k = term * (1 - p) * (f_k_minus_1 - f_k)
-            e_d_fail_num += p_timeout_k * (k / gamma_rate)
+            # Timeout crossing S_{k-1} <= W < S_k: by exponential memorylessness of the k-th visit, mean is W + 1/gamma
+            p_timeout_k = term * (1 - p) * max(0.0, f_k_minus_1 - f_k)
+            e_d_fail_num += p_timeout_k * (W + 1 / gamma_rate)
             
         return p_succ, e_v, e_d_succ_num, e_d_fail_num
 

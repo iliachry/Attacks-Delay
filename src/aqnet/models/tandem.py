@@ -12,8 +12,8 @@ def solve_tandem_theory(
     mu: float = 2.0,
     lambda_arrival: float = 0.15,
     W: float = 8.0,
-    max_iter: int = 100,
-    tol: float = 1e-5,
+    max_iter: int = 500,
+    tol: float = 1e-10,
 ) -> float:
     """
     Solves expected end-to-end sojourn time for an N-node tandem chain under multi-hop attacks.
@@ -30,9 +30,9 @@ def solve_tandem_theory(
         External original arrival rate.
     W : float, default=8.0
         End-to-end timeout window.
-    max_iter : int, default=100
+    max_iter : int, default=500
         Maximum fixed-point iterations.
-    tol : float, default=1e-5
+    tol : float, default=1e-10
         Convergence tolerance.
 
     Returns
@@ -40,11 +40,14 @@ def solve_tandem_theory(
     float
         Expected end-to-end sojourn time. Returns np.inf if unstable.
     """
+    if p < 0.0 or p >= 1.0 or N < 1 or lambda_arrival < 0.0 or lambda_arrival >= mu or W <= 0.0:
+        return float(np.inf)
+
     Lambda = [lambda_arrival] * N
     P_succ_overall = 1.0
 
     for _ in range(max_iter):
-        if any(Lambda[j] >= mu * 0.999 for j in range(N)):
+        if any(Lambda[j] >= mu * 0.999999 for j in range(N)):
             return float(np.inf)
 
         # Total journey time moments
@@ -64,9 +67,12 @@ def solve_tandem_theory(
 
         Lambda_new = [lambda_arrival / P_succ_overall] * N
 
-        if np.isclose(Lambda_new[0], Lambda[0], rtol=tol):
+        if abs(Lambda_new[0] - Lambda[0]) <= tol:
+            Lambda = Lambda_new
             break
         Lambda = Lambda_new
+    else:
+        return float(np.inf)
 
     if any(Lambda[j] >= mu for j in range(N)) or P_succ_overall <= 1e-7:
         return float(np.inf)

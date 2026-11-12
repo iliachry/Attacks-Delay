@@ -21,6 +21,7 @@ class Packet:
         self.identifier = identifier
         self.original_arrival_time = arrival_time
         self.attempt_start_time = arrival_time
+        self.is_attacked = False
 
 def packet_generator(env, queue, lambda_n):
     packet_id = 0
@@ -36,21 +37,21 @@ def server_process(env, servers, queues, node_id, p):
         with servers[node_id].request() as req:
             yield req
             
-            # Start of attempt at node 0
-            if node_id == 0:
-                packet.attempt_start_time = env.now
-            
             # Service
             yield env.timeout(random.expovariate(mu))
             
-            # Check attack or timeout
-            if random.random() < p or (env.now - packet.attempt_start_time) > W:
-                # Failure: Restart from node 0
-                yield queues[0].put(packet)
+            # Stage corruption (verified end-to-end at destination node N_tandem - 1)
+            if random.random() < p:
+                packet.is_attacked = True
+            
+            if node_id < N_tandem - 1:
+                yield queues[node_id + 1].put(packet)
             else:
-                # Success at this node
-                if node_id < N_tandem - 1:
-                    yield queues[node_id + 1].put(packet)
+                # End-to-end checksum and timeout verification at destination node
+                if packet.is_attacked or (env.now - packet.attempt_start_time) > W:
+                    packet.attempt_start_time = env.now
+                    packet.is_attacked = False
+                    yield queues[0].put(packet)
                 else:
                     # Final success
                     packet_delays.append(env.now - packet.original_arrival_time)
@@ -75,62 +76,68 @@ def run_tandem_simulation(p):
 
 from scipy.stats import gamma
 
-def solve_tandem_theory(p):
-    Lambda = [lambda_arrival] * N_tandem
-    for _ in range(100):
-        # Calculate journey times and timeout probs
-        for i in range(N_tandem):
-            # Sum of delays up to i
-            E_S = sum(1/(mu - Lambda[j]) for j in range(i+1))
-            Var_S = sum(1/(mu - Lambda[j])**2 for j in range(i+1))
-            
-            # Gamma approx
-            k = E_S**2 / Var_S
-            theta = Var_S / E_S
-            P_timeout = 1 - gamma.cdf(W, a=k, scale=theta)
-            
-            # Rate at node i+1 (if exists) is Lambda_i * (1-p) * (1-P_timeout) ?
-            # No, retransmission is from 0. 
-            # Total attempts rate Lambda_star = lambda / P_succ
-            
-        # Overall success probability
-        E_S_total = sum(1/(mu - Lambda[j]) for j in range(N_tandem))
-        Var_S_total = sum(1/(mu - Lambda[j])**2 for j in range(N_tandem))
+def solve_tandem_theory(p, N=N_tandem, mu=mu, lambda_arrival=lambda_arrival, W=W, max_iter=500, tol=1e-10):
+    if p < 0.0 or p >= 1.0 or N < 1 or lambda_arrival < 0.0 or lambda_arrival >= mu or W <= 0.0:
+        return float(np.inf)
+
+    Lambda = [lambda_arrival] * N
+    P_succ_overall = 1.0
+
+    for _ in range(max_iter):
+        if any(Lambda[j] >= mu * 0.999999 for j in range(N)):
+            return float(np.inf)
+
+        E_S_total = sum(1.0 / (mu - Lambda[j]) for j in range(N))
+        Var_S_total = sum(1.0 / (mu - Lambda[j]) ** 2 for j in range(N))
+
+        if Var_S_total <= 0:
+            return float(np.inf)
+
         k_total = E_S_total**2 / Var_S_total
         theta_total = Var_S_total / E_S_total
-        P_succ_overall = (1-p)**N_tandem * gamma.cdf(W, a=k_total, scale=theta_total)
-        
-        Lambda_new = [lambda_arrival / P_succ_overall] * N_tandem
-        
-        if np.isclose(Lambda_new[0], Lambda[0], rtol=1e-5):
+        P_succ_overall = ((1.0 - p) ** N) * gamma.cdf(W, a=k_total, scale=theta_total)
+
+        if P_succ_overall <= 1e-7:
+            return float(np.inf)
+
+        Lambda_new = [lambda_arrival / P_succ_overall] * N
+
+        if abs(Lambda_new[0] - Lambda[0]) <= tol:
+            Lambda = Lambda_new
             break
         Lambda = Lambda_new
-        
-    return (1/P_succ_overall) * sum(1/(mu - Lambda[j]) for j in range(N_tandem))
+    else:
+        return float(np.inf)
+
+    if any(Lambda[j] >= mu for j in range(N)) or P_succ_overall <= 1e-7:
+        return float(np.inf)
+
+    return float((1.0 / P_succ_overall) * sum(1.0 / (mu - Lambda[j]) for j in range(N)))
 
 # --- MAIN ---
-p_range = np.linspace(0.01, 0.25, 10)
-theory_delays = [solve_tandem_theory(p) for p in p_range]
-sim_delays = []
+if __name__ == "__main__":
+    p_range = np.linspace(0.01, 0.25, 10)
+    theory_delays = [solve_tandem_theory(p) for p in p_range]
+    sim_delays = []
 
-print("Running Tandem N=3 Simulation...")
-for p in p_range:
-    results = []
-    for r in range(replications):
-        random.seed(r)
-        np.random.seed(r)
-        results.append(run_tandem_simulation(p))
-    sim_delays.append(np.mean(results))
+    print("Running Tandem N=3 Simulation...")
+    for p in p_range:
+        results = []
+        for r in range(replications):
+            random.seed(r)
+            np.random.seed(r)
+            results.append(run_tandem_simulation(p))
+        sim_delays.append(np.mean(results))
 
-plt.figure(figsize=(10, 6))
-plt.plot(p_range, theory_delays, 'b-', label='Theory (Gamma Approx)')
-plt.scatter(p_range, sim_delays, color='red', marker='x', s=100, label='Simulation')
-plt.xlabel('Attack Probability (p)')
-plt.ylabel('Average Delay (s)')
-plt.title(f'Tandem Network (N={N_tandem}) - Delay vs p')
-plt.legend()
-import os
-script_dir = os.path.dirname(os.path.abspath(__file__))
-plot_path = os.path.join(script_dir, 'corrected_tandem_simulation_N3.png')
-plt.savefig(plot_path, dpi=300)
-print(f"Done. Plot saved to {plot_path}")
+    plt.figure(figsize=(10, 6))
+    plt.plot(p_range, theory_delays, 'b-', label='Theory (Gamma Approx)')
+    plt.scatter(p_range, sim_delays, color='red', marker='x', s=100, label='Simulation')
+    plt.xlabel('Attack Probability (p)')
+    plt.ylabel('Average Delay (s)')
+    plt.title(f'Tandem Network (N={N_tandem}) - Delay vs p')
+    plt.legend()
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    plot_path = os.path.join(script_dir, 'corrected_tandem_simulation_N3.png')
+    plt.savefig(plot_path, dpi=300)
+    print(f"Done. Plot saved to {plot_path}")

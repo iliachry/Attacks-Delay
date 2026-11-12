@@ -78,13 +78,16 @@ def solve_feedback_theory(
             p_succ += p_succ_k
             e_d_succ_num += p_succ_k * (k / gamma_rate) * (f_k_plus_1 / f_k if f_k > 0 else 1.0)
 
-            # Attack at visit k
+            # Attack at visit k: surviving k-1 visits within W (E[S_{k-1} | S_{k-1} <= W]) plus 1/gamma at visit k
             p_attack_k = term * p * f_k_minus_1
-            e_d_fail_num += p_attack_k * (k / gamma_rate)
+            e_d_att_k = (1.0 / gamma_rate) + ((k - 1.0) / gamma_rate) * (
+                f_k / f_k_minus_1 if f_k_minus_1 > 0.0 else 1.0
+            )
+            e_d_fail_num += p_attack_k * e_d_att_k
 
-            # Timeout at visit k
-            p_timeout_k = term * (1.0 - p) * (f_k_minus_1 - f_k)
-            e_d_fail_num += p_timeout_k * (k / gamma_rate)
+            # Timeout crossing S_{k-1} <= W < S_k: by exponential memorylessness of the k-th visit, mean is W + 1/gamma
+            p_timeout_k = term * (1.0 - p) * max(0.0, f_k_minus_1 - f_k)
+            e_d_fail_num += p_timeout_k * (W + 1.0 / gamma_rate)
 
         return p_succ, e_v, e_d_succ_num, e_d_fail_num
 
@@ -113,6 +116,7 @@ def solve_feedback_theory(
 
     details = {
         "p_succ": p_succ,
+        "e_v": e_v,
         "e_attempts": e_attempts,
         "e_d_succ": e_d_succ,
         "e_d_fail": e_d_fail,

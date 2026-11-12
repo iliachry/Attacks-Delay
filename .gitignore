@@ -21,6 +21,13 @@ final_corrected_plot.png
 *.aux
 *.out
 *.pdf
+!paper.pdf
+!paper_ieee.pdf
+!letter/letter.pdf
+!journal/paper.pdf
+!journal/paper_ieee.pdf
+!fig_saddle_node_bifurcation.pdf
+!**/fig_saddle_node_bifurcation.pdf
 *.synctex.gz
 *.fls
 *.fdb_latexmk

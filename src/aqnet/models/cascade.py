@@ -40,7 +40,8 @@ class CascadeParams:
     beta_b: float = 1.2
     A_N: float = 0.7582  # Edge NPU standalone top-1 accuracy (ResNet-50 INT8)
     A_G: float = 0.8453  # Cloud GPU standalone top-1 accuracy (ViT-B/16 FP16)
-    gamma_gain: float = 1.35  # Shape exponent for conditional oracle gain r_1(tau)
+    r_slope: float = 0.30731157  # Marginal accuracy gain slope r_1(tau) = r_slope * (1 - tau^gamma_gain)
+    gamma_gain: float = 1.0  # Shape exponent for conditional oracle gain r_1(tau)
 
     # Station 2: 1GbE LAN (jpeg224_q90) + NVIDIA GeForce RTX 5080 (Blackwell GB203, ViT-B/16 FP16)
     t_net_0_ms: float = 0.45  # Fixed per-batch TCP RTT base overhead (ms)
@@ -99,9 +100,10 @@ def offload_pdf_prime(tau: float, params: CascadeParams | None = None) -> float:
 
 
 def _gain_scale(params: CascadeParams) -> float:
-    """Compute normalization constant Delta_A_max so int_0^1 r_1(u) f_G(u) du = A_G - A_N."""
+    """Return marginal accuracy gain scale factor r_slope (or normalized Delta_A_max when r_slope <= 0)."""
+    if getattr(params, "r_slope", 0.0) > 0.0:
+        return float(params.r_slope)
     a, b, gam = params.beta_a, params.beta_b, params.gamma_gain
-    # E[G^gamma] for G ~ Beta(a, b) is B(a + gamma, b) / B(a, b)
     e_g_gamma = float(beta_fn(a + gam, b) / beta_fn(a, b))
     denom = max(1e-12, 1.0 - e_g_gamma)
     return (params.A_G - params.A_N) / denom
@@ -291,7 +293,6 @@ def solve_batch_timeout_moments(
         dh_du = exp_neg_u * (dg_du - g_u)
         d2h_du2 = exp_neg_u * (d2g_du2 - 2.0 * dg_du + g_u)
     else:
-        h_u = tail_b / u
         dh_du = (p_k[b - 1] * u - tail_b) / (u ** 2)
         d2h_du2 = (dp_du[b - 1] * (u ** 2) - 2.0 * u * p_k[b - 1] + 2.0 * tail_b) / (u ** 3)
 
@@ -833,14 +834,8 @@ from aqnet.models.cascade_nonstationary import (
 )
 
 __all__ = [
-    "apply_hysteresis_with_safety_cap",
-    "simulate_nonstationary_hysteresis_simpy",
-    "simulate_stationary_cascade_simpy",
-    "solve_hysteresis_band",
-    "solve_nonstationary_envelope",
-    "solve_threshold_lambda_sensitivity",
-    "verify_symbolic_cascade_proofs",
     "CascadeParams",
+    "apply_hysteresis_with_safety_cap",
     "cascade_accuracy",
     "conditional_oracle_gain",
     "conditional_oracle_gain_prime",
@@ -849,8 +844,14 @@ __all__ = [
     "offload_pdf_f",
     "offload_pdf_prime",
     "offload_rate_q",
+    "simulate_nonstationary_hysteresis_simpy",
+    "simulate_stationary_cascade_simpy",
     "solve_batch_timeout_moments",
     "solve_cascade_delay",
     "solve_cascade_power",
+    "solve_hysteresis_band",
+    "solve_nonstationary_envelope",
     "solve_pareto_derivative",
+    "solve_threshold_lambda_sensitivity",
+    "verify_symbolic_cascade_proofs",
 ]

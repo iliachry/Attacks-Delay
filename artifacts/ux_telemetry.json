@@ -1,0 +1,22 @@
+{
+  "hudOcclusionRatio": 0.048,
+  "horizontalOverflowPx": 0,
+  "minTapTargetPx": 44,
+  "headerRows": 1,
+  "expandedTablesVisible": 1,
+  "maxAnswerBullets": 2,
+  "wcagContrast": {
+    "minTextContrastRatio": 17.85,
+    "minWorstPixelContrastRatio": 9.45,
+    "minWhiteBackdropBoundRatio": 10.35
+  },
+  "primaryCtaCount": 1,
+  "primaryCtasAboveFold": 1,
+  "stepsToValue": 1,
+  "stepsToCoreValue": 1,
+  "stateCompleteness": 1.0,
+  "consoleErrorCount": 0,
+  "pageErrorCount": 0,
+  "videoMasterBytes": 1458152,
+  "videoCompanionBytes": 1458152
+}

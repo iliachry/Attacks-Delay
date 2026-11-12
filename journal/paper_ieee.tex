@@ -34,7 +34,7 @@
 
 \IEEEtitleabstractindextext{%
 \begin{abstract}
-The reliable transport of data through adversarial networks requires a rigorous mathematical understanding of the coupled dynamics between malicious disruption and transport-layer recovery protocols. This paper presents an exhaustive theoretical and empirical investigation of packet sojourn times across five foundational network topologies subject to active destruction and modification attacks. By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, we formulate closed-form and semi-analytical models for: (i) single-node pre-service destruction attacks with backoff, (ii) single-node post-service modification attacks, (iii) multi-hop tandem chains with hypoexponential moment matching, (iv) general $N$-node feedforward networks with stage-wise traffic attenuation and truncated delay expectations, and (v) $N$-node symmetric feedback meshes with Erlang-distributed path traversal. We demonstrate that timeout-driven retransmissions induce non-linear traffic amplification loops that precipitate abrupt queue saturation and structural instability. The theoretical models are validated against discrete-event simulations, demonstrating exact agreement across all operational regimes with relative errors consistently below 1\%.
+The reliable transport of data through adversarial networks requires a rigorous mathematical understanding of the coupled dynamics between malicious disruption and transport-layer recovery protocols. This paper presents an exhaustive theoretical and empirical investigation of packet sojourn times across five foundational network topologies subject to active destruction and modification attacks. By synthesizing classical queueing theory, renewal-reward theory, and fixed-point traffic conservation, we formulate closed-form and semi-analytical models for: (i) single-node pre-service destruction attacks with backoff, (ii) single-node post-service modification attacks, (iii) multi-hop tandem chains with hypoexponential moment matching, (iv) general $N$-node feedforward networks with stage-wise traffic attenuation and truncated delay expectations, and (v) $N$-node symmetric feedback meshes with Erlang-distributed path traversal. We demonstrate that timeout-driven retransmissions induce non-linear traffic amplification loops that precipitate abrupt queue saturation and structural instability. The theoretical models are validated against discrete-event simulations, demonstrating close agreement across all operational regimes with relative errors consistently below 2\% (and below 0.30\% across all multi-node topologies).
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -58,8 +58,8 @@ Queueing theory, adversarial networks, renewal-reward process, fixed-point traff
 To guarantee eventual packet delivery, transport protocols employ automatic repeat request (ARQ) mechanisms governed by timeout deadlines \cite{fall1996simulation}. While timeout-driven retransmissions ensure reliable delivery, they introduce a powerful \textit{positive feedback loop}:
 \begin{align*}
 \text{Attacks / Delay} &\implies \text{Timeouts / Retransmissions} \\
-&\implies \text{Increased Total Traffic } \Lambda^* \\
-&\implies \text{Severe Congestion} \implies \text{Further Timeouts.}
+&\implies \text{Amplified Traffic } \Lambda^* \\
+&\implies \text{Congestion \& Timeouts.}
 \end{align*}
 This feedback mechanism leads to sharp ``cliff-edge'' instability thresholds where a minor increase in the external arrival rate $\lambda$ or attack probability $p$ causes queue lengths and packet delay to diverge to infinity.
 
@@ -71,7 +71,8 @@ In this paper, we develop a unified, comprehensive theoretical foundation to mod
     \item \textbf{Section 5} formulates the theory for $N$-node symmetric feedback meshes (Case 5) using Jackson network routing and Erlang-$k$ visit summations.
     \item \textbf{Section 6} synthesizes the comparative theoretical properties across all topologies.
     \item \textbf{Section 7} presents validation against discrete-event simulations.
-    \item \textbf{Section 8} concludes the paper.
+    \item \textbf{Section 8} establishes the Saddle-Node (Fold) retry bifurcation and critical collapse theory.
+    \item \textbf{Section 9} concludes the paper.
 \end{itemize}
 
 \section{Universal Mathematical Framework}
@@ -99,11 +100,11 @@ Because every failed attempt generates a retransmission, the total effective arr
 \Lambda^* = \lambda \cdot E[A](\Lambda^*) = \frac{\lambda}{P_{\text{succ}}(\Lambda^*)}
 \label{eq:fixed_point_general}
 \end{equation}
-Equation \eqref{eq:fixed_point_general} is a non-linear fixed-point equation in $\Lambda^*$. Because $P_{\text{succ}}$ depends on the queueing delays (which are monotonically increasing functions of $\Lambda^*$), $P_{\text{succ}}(\Lambda^*)$ decreases monotonically with $\Lambda^*$. A stable operating point exists if and only if there exists a solution $\Lambda^*$ satisfying the queue stability condition:
+Equation \eqref{eq:fixed_point_general} is a non-linear mean-field fixed-point equation in $\Lambda^*$, equivalently expressed via the effective throughput conservation map $\Gamma(\Lambda^*) \triangleq \Lambda^* P_{\text{succ}}(\Lambda^*) = \lambda$ (or $\Lambda^* P_{\text{succ}}(\Lambda^*)/E[V](\Lambda^*) = \lambda$ in feedback meshes). Because $P_{\text{succ}}$ depends on the queueing delays (which are monotonically increasing functions of $\Lambda^*$), $P_{\text{succ}}(\Lambda^*)$ decreases monotonically with $\Lambda^*$, whereas $\Gamma(\Lambda^*)$ is unimodal on $(0, \Lambda_{\text{crit}})$. Under finite timeout $W < \infty$, two fixed points $\Lambda_{\text{stable}}^* < \Lambda_{\text{SN}}^* < \Lambda_{\text{unstable}}^*$ coexist for every subcritical arrival rate $\lambda < \lambda_{\text{crit}}^{\text{SN}} \triangleq \max_{\Lambda^* \in (0, \Lambda_{\text{crit}})} \Gamma(\Lambda^*)$, coalescing at the Saddle-Node fold $\Lambda_{\text{SN}}^*$ and satisfying the server saturation bound:
 \begin{equation}
-\Lambda^* < \Lambda_{\text{crit}}
+\Lambda_{\text{stable}}^* \le \Lambda_{\text{SN}}^* < \Lambda_{\text{crit}}
 \end{equation}
-where $\Lambda_{\text{crit}}$ is the topology-dependent service capacity.
+where $\Lambda_{\text{crit}}$ is the topology-dependent internal server saturation limit.
 
 \section{Single-Node Analytical Models}
 We first evaluate an isolated server with service rate $\mu$ under two fundamentally different attack models.
@@ -127,14 +128,14 @@ E[W_q] = \frac{\rho}{\mu(1 - \rho)} = \frac{\Lambda^*(1 - p)}{\mu(\mu - \Lambda^
 \end{equation}
 
 \subsubsection{Timeout and Success Probability}
-For an $M/M/1$ queue with parameter $\gamma = \mu - \lambda_{\text{eff}}$, the CDF of the total time in system $W_q + S$ is:
+For an $M/M/1$ queue with effective service-minus-arrival rate $\gamma = \mu - \lambda_{\text{eff}}$, the total time in system (queue waiting plus service, $W_q + S$) of a non-attacked packet is exponentially distributed with rate $\gamma$:
 \begin{equation}
-P(W_q + S \le t) = 1 - \rho e^{-\gamma t} = 1 - \frac{\Lambda^*(1-p)}{\mu} e^{-(\mu - \Lambda^*(1-p))t}
+P(W_q + S \le t \mid \text{ok}) = 1 - e^{-\gamma t} = 1 - e^{-(\mu - \Lambda^*(1-p))t}
 \end{equation}
-A transmission attempt succeeds if and only if the packet is not attacked and completes service within the timeout window $T$:
+A transmission attempt succeeds if and only if the packet is not attacked ($\text{ok}$) and completes service within the timeout window $T$:
 \begin{align}
-P_{\text{succ}} &= (1 - p) P(W_q + S \le T) \nonumber \\
-&= (1 - p)\left(1 - \frac{\Lambda^*(1-p)}{\mu} e^{-(\mu - \Lambda^*(1-p))T}\right)
+P_{\text{succ}} &= (1 - p) P(W_q + S \le T \mid \text{ok}) \nonumber \\
+&= (1 - p)\left(1 - e^{-(\mu - \Lambda^*(1-p))T}\right)
 \end{align}
 The expected delay per attempt is:
 \begin{align}
@@ -216,9 +217,9 @@ P(S_N \le W) = F_\Gamma(W; k, \theta) = \frac{\gamma(k, W/\theta)}{\Gamma(k)}
 where $\gamma(s, x) = \int_0^x t^{s-1} e^{-t} dt$ is the lower incomplete gamma function.
 
 \subsection{Case Study 3: 3-Node Tandem Chain (\texorpdfstring{$N=3$}{N=3})}
-In the 3-node tandem network, external traffic arrives at Node 0 at rate $\lambda$. Packets are forwarded sequentially through Nodes 0, 1, and 2. An adversarial attack occurs at any node with probability $p$. If a packet is attacked at any node or if the total elapsed time exceeds $W$, the packet fails and is retransmitted from Node 0.
+In the 3-node tandem network, external traffic arrives at Node 0 at rate $\lambda$. Packets are forwarded sequentially through Nodes 0, 1, and 2, where each node independently corrupts the payload with probability $p$ during service and integrity verification occurs end-to-end at destination Node 2 (unlike Case 4, where corrupted packets drop out mid-chain). If a packet fails end-to-end verification or if the total elapsed time exceeds $W$, the packet fails and is retransmitted from Node 0.
 
-Under symmetric load across stages ($\Lambda_0^* = \Lambda_1^* = \Lambda_2^* = \Lambda^*$), the distribution $S_3$ reduces to an exact Erlang-3 distribution. The overall success probability is:
+Because every attempt traverses all three hops before end-to-end verification, all stages experience symmetric load ($\Lambda_0^* = \Lambda_1^* = \Lambda_2^* = \Lambda^*$), and the distribution $S_3$ reduces to an exact Erlang-3 distribution. The overall success probability is:
 \begin{equation}
 P_{\text{succ}} = (1 - p)^3 \left(1 - \sum_{m=0}^2 \frac{[(\mu - \Lambda^*)W]^m e^{-(\mu - \Lambda^*)W}}{m!}\right)
 \end{equation}
@@ -246,16 +247,16 @@ P_{\text{succ}} = (1 - p)^N p_{\text{no\_to}}, \quad p_{\text{no\_to}} = \frac{\
 \subsubsection{Truncated Conditional Delays and Failure Decomposition}
 We compute the conditional expectations of successful and failed attempts:
 \begin{enumerate}
-    \item \textbf{Successful Attempt Duration $E[D_{\text{succ}}]$:} Conditioned on $S_N \le W$, the expectation is given by the truncated Gamma moment:
+    \item \textbf{Successful Attempt Duration $E[D_{\text{succ}}]$:} Conditioned on $S_N \le W$, the expectation is given by the truncated Gamma moment (with regularized lower incomplete gamma $P(s, x) \triangleq \gamma(s, x)/\Gamma(s)$ and $\mu_S = k\theta$):
     \begin{equation}
-    E[D_{\text{succ}}] = \mu_S \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}
+    E[D_{\text{succ}}] = \mu_S \frac{P(k+1, W/\theta)}{P(k, W/\theta)} = \theta \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}
     \label{eq:truncated_gamma_succ}
     \end{equation}
     \item \textbf{Failed Attempt Duration $E[D_{\text{fail}}]$:}
     \begin{equation}
-    E[D_{\text{fail}}] = \frac{\sum_{i=0}^{N-1} w_{\text{att}, i} \left(\sum_{j=0}^i T_j\right) + w_{\text{to}} E[S_N \mid S_N > W]}{\sum_{i=0}^{N-1} w_{\text{att}, i} + w_{\text{to}}}
+    E[D_{\text{fail}}] = \frac{\sum_{i=0}^{N-1} w_{\text{att}, i} \bar{T}_i + w_{\text{to}} E[S_N | S_N > W]}{\sum_{i=0}^{N-1} w_{\text{att}, i} + w_{\text{to}}},
     \end{equation}
-    where $w_{\text{att}, i} = (1-p)^i p$, $w_{\text{to}} = (1-p)^N (1 - p_{\text{no\_to}})$, and $E[S_N \mid S_N > W] = \mu_S \frac{1 - \frac{\gamma(k+1, W/\theta)}{\Gamma(k+1)}}{1 - \frac{\gamma(k, W/\theta)}{\Gamma(k)}}$.
+    where $\bar{T}_i = \sum_{j=0}^i T_j$, $w_{\text{att}, i} = (1-p)^i p$, $w_{\text{to}} = (1-p)^N (1 - p_{\text{no\_to}})$, and $E[S_N \mid S_N > W] = \mu_S \frac{1 - \frac{\gamma(k+1, W/\theta)}{\Gamma(k+1)}}{1 - \frac{\gamma(k, W/\theta)}{\Gamma(k)}}$.
 \end{enumerate}
 The complete end-to-end sojourn time is:
 \begin{equation}
@@ -301,14 +302,14 @@ The cumulative time required to complete $k$ successive node visits follows an \
 \begin{equation}
 F_k(W) = P(S_k \le W) = \frac{\gamma(k, \gamma W)}{\Gamma(k)} = 1 - \sum_{j=0}^{k-1} \frac{(\gamma W)^j e^{-\gamma W}}{j!}
 \end{equation}
-with $F_0(W) = 1$. Let the reach weight be $u_k = (1 - p)^{k-1} \left(\frac{N}{N+1}\right)^{k-1} F_{k-1}(W)$.
+with $F_0(W) = 1$. Let $w_k = (1 - p)^{k-1} \left(\frac{N}{N+1}\right)^{k-1}$ denote the unconditioned routing-and-survival weight prior to visit $k$, and let the timeout-surviving reach weight be $u_k = w_k F_{k-1}(W)$.
 
 \subsection{Visit-by-Visit Probabilistic Decomposition}
 We derive the network metrics via infinite series expansions:
 \begin{enumerate}
     \item \textbf{Expected Server Visits per Attempt $E[V]$:}
     \begin{equation}
-    E[V] = \sum_{k=1}^\infty u_k = \sum_{k=1}^\infty (1 - p)^{k-1} \left(\frac{N}{N+1}\right)^{k-1} F_{k-1}(W)
+    E[V] = \sum_{k=1}^\infty u_k = \sum_{k=1}^\infty \left(\frac{N(1-p)}{N+1}\right)^{k-1} F_{k-1}(W)
     \end{equation}
     \item \textbf{Success Probability $P_{\text{succ}}$:}
     \begin{equation}
@@ -320,9 +321,9 @@ We derive the network metrics via infinite series expansions:
     \end{equation}
     \item \textbf{Failure Probabilities and Delay $E[D_{\text{fail}}]$:}
     \begin{equation}
-    E[D_{\text{fail}}] = \frac{\sum_{k=1}^\infty (P_{\text{att}, k} + P_{\text{to}, k}) \frac{k}{\gamma}}{\sum_{k=1}^\infty (P_{\text{att}, k} + P_{\text{to}, k})}
+    E[D_{\text{fail}}] = \frac{\sum_{k=1}^\infty \left( P_{\text{att}, k}\,\mu_{\text{att}, k} + P_{\text{to}, k}\,\mu_{\text{to}, k} \right)}{\sum_{k=1}^\infty (P_{\text{att}, k} + P_{\text{to}, k})}
     \end{equation}
-    where $P_{\text{att}, k} = u_k p$ and $P_{\text{to}, k} = u_k (1 - p) [F_{k-1}(W) - F_k(W)]$.
+    where $P_{\text{att}, k} = u_k p$ with $\mu_{\text{att}, k} = \frac{1}{\gamma} + \frac{k-1}{\gamma}\frac{F_k(W)}{F_{k-1}(W)}$, $P_{\text{to}, k} = w_k (1 - p) [F_{k-1}(W) - F_k(W)]$ with $\mu_{\text{to}, k} = W + \frac{1}{\gamma}$, satisfying $P_{\text{succ}}E[D_{\text{succ}}] + (1-P_{\text{succ}})E[D_{\text{fail}}] = E[V]/\gamma$.
 \end{enumerate}
 
 \subsection{Fixed-Point Traffic Equation and Delay}
@@ -347,45 +348,64 @@ Fig. \ref{fig:feedback} illustrates the scaling of sojourn time with network siz
 \begin{table*}[t]
 \centering
 \caption{Consolidated theoretical formulations across all five network case studies.}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lp{3.5cm}p{4.8cm}p{6.5cm}@{}}
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lp{3.2cm}p{4.6cm}p{6.0cm}@{}}
 \toprule
 \textbf{Case Study} & \textbf{Effective Load $\rho$} & \textbf{Success Prob $P_{\text{succ}}$} & \textbf{End-to-End Delay $E[D]$} \\ \midrule
-\textbf{Case 1: Destruction} & $\frac{\Lambda^*(1-p)}{\mu}$ & $(1-p)[1 - \rho e^{-(\mu - \Lambda^*(1-p))T}]$ & $\frac{1}{P_{\text{succ}}}[E[W_q] + \frac{1-p}{\mu}] + (\frac{1}{P_{\text{succ}}}-1)B$ \\ \addlinespace
+\textbf{Case 1: Destruction} & $\frac{\Lambda^*(1-p)}{\mu}$ & $(1-p)[1 - e^{-(\mu - \Lambda^*(1-p))T}]$ & $\frac{1}{P_{\text{succ}}}[E[W_q] + \frac{1-p}{\mu}] + (\frac{1}{P_{\text{succ}}}-1)B$ \\ \addlinespace
 \textbf{Case 2: Modification} & $\frac{\Lambda^*}{\mu}$ & $(1-p)[1 - e^{-(\mu - \Lambda^*)T}]$ & $\frac{1}{P_{\text{succ}}(\mu - \Lambda^*)}$ \\ \addlinespace
 \textbf{Case 3: 3-Node Tandem} & $\frac{\Lambda^*}{\mu}$ & $(1-p)^3 F_{\text{Erlang}}(W; 3, \mu-\Lambda^*)$ & $\frac{3}{P_{\text{succ}}(\mu - \Lambda^*)}$ \\ \addlinespace
-\textbf{Case 4: General $N$-Tandem} & $\frac{\Lambda_0^*}{\mu}$ at Node 0 & $(1-p)^N F_\Gamma(W; k, \theta)$ & $(E[A]-1)E[D_{\text{fail}}] + \mu_S \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}$ \\ \addlinespace
+\textbf{Case 4: General $N$-Tandem} & $\frac{\Lambda_0^*}{\mu}$ at Node 0 & $(1-p)^N F_\Gamma(W; k, \theta)$ & $(E[A]-1)E[D_{\text{fail}}] + \theta \frac{\gamma(k+1, W/\theta)}{\gamma(k, W/\theta)}$ \\ \addlinespace
 \textbf{Case 5: $N$-Node Feedback} & $\frac{\lambda E[V]}{\mu P_{\text{succ}}}$ & $\sum_{k=1}^\infty (1-p)^k \frac{N^{k-1}}{(N+1)^k} F_k(W)$ & $(E[A]-1)E[D_{\text{fail}}] + \frac{1}{P_{\text{succ}}}\sum_k P_{\text{succ}, k}\frac{k}{\gamma}\frac{F_{k+1}(W)}{F_k(W)}$ \\ \bottomrule
-\end{tabular}%
-}
+\end{tabular*}}
 \label{tab:theory_synthesis}
 \end{table*}
 
 \begin{table*}[t]
 \centering
 \caption{Cross-validation of analytical models vs. high-fidelity SimPy simulations.}
-\begin{tabular}{@{}lccccc@{}}
+{\scriptsize
+\setlength{\tabcolsep}{1.5pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lp{3.4cm}cccc@{}}
 \toprule
-\textbf{Network Scenario} & \textbf{Parameters} & \textbf{Theory Delay (s)} & \textbf{Sim Delay (s)} & \textbf{Abs. Gap} & \textbf{Rel. Error (\%)} \\ \midrule
+\textbf{Scenario} & \textbf{Parameters} & \textbf{Theory (s)} & \textbf{Sim (s)} & \textbf{Gap} & \textbf{Err.\ (\%)} \\ \midrule
 \textbf{Case 1: Destruction} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2, B=0.03$ & 0.1286 & 0.1261 & 0.0025 & 1.91\% \\
 \textbf{Case 2: Modification} & $N=1, \mu=10, \lambda=1.44, p=0.2, W=2$ & 0.1525 & 0.1523 & 0.0002 & 0.15\% \\
-\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.0511 & 2.0463 & 0.0048 & 0.23\% \\
-\textbf{Case 4: General Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
-\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10, W=50$ & 31.6064 & 31.8035 & 0.1971 & 0.62\% \\ \bottomrule
-\end{tabular}
+\textbf{Case 3: 3-Node Tandem} & $N=3, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.2938 & 2.2965 & 0.0027 & 0.12\% \\
+\textbf{Case 4: Feedforward} & $N=4, \mu=2.0, \lambda=0.15, p=0.10, W=8$ & 2.9124 & 2.9079 & 0.0045 & 0.15\% \\
+\textbf{Case 5: Feedback Mesh} & $N=10, \mu=1.0, \lambda=0.05, p=0.10, W=50$ & 31.8883 & 31.8035 & 0.0848 & 0.27\% \\ \bottomrule
+\end{tabular*}}
 \label{tab:validation}
 \end{table*}
 
 \section{Comparative Theoretical Synthesis}
 Table \ref{tab:theory_synthesis} synthesizes the theoretical formulations across all five case studies.
 
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.92\textwidth]{fig_saddle_node_bifurcation.pdf}
+    \caption{Saddle-Node retry bifurcation ($\mu=10, T=1, p=0.25$): (a) unimodal throughput curve $\Gamma(\Lambda^*)$ with stable lower branch $\Lambda_{\text{stable}}^*$, unstable upper separatrix $\Lambda_{\text{unstable}}^*$, and Wright-$\omega$ fold point; (b) critical capacity $\lambda_{\text{crit}}^{\text{SN}}(p)$ showing Case~1 $p$-invariance vs.\ Case~2 linear erosion.}
+    \label{fig:saddle_node_bifurcation}
+\end{figure*}
+
 \section{Experimental Validation}
 The proposed analytical models were validated against discrete-event simulations implemented in SimPy \cite{matloff2008introduction}. Simulations were executed with 80–200 replications, a warm-up period of 2,000 time units, and an active observation horizon of 20,000 time units per replication. 
 
 As shown in Table \ref{tab:validation}, theoretical predictions align with simulation data across all five case studies with relative errors under 1\% in multi-node scenarios and under 2\% in single-node cases.
 
+\section{Saddle-Node Retry Bifurcation and Critical Collapse Theory}
+In any adversarial queue with finite timeout $T$, mean-field flow conservation requires $\Gamma(\Lambda^*; p, \mu, T) \triangleq \Lambda^* P_{\text{succ}}(\Lambda^*; p, \mu, T) = \lambda$ (or $\Gamma_{\text{fb}}(\Lambda^*) \triangleq \Lambda^* P_{\text{succ}}(\Lambda^*)/E[V](\Lambda^*) = \lambda$ in feedback meshes). Because $\Gamma(0) = \Gamma(\Lambda_{\max}) = 0$ and $\Gamma(\Lambda^*) > 0$ on $(0, \Lambda_{\max})$, $\Gamma(\Lambda^*)$ attains a unique interior fold maximum $(\Lambda_{\text{SN}}^*, \lambda_{\text{crit}}^{\text{SN}})$ where a \textbf{Saddle-Node (Fold) Retry Bifurcation}~\cite{strogatz2015nonlinear} occurs.
+
+For Case 2 (Modification), setting $\partial \Gamma_{\text{mod}}/\partial \Lambda^* = (1 - p)[1 - (1 + \Lambda^* T)e^{-(\mu - \Lambda^*)T}] = 0$ with $v = 1 + \Lambda^* T > 1$ yields $v e^v = e^{\mu T + 1}$, solved in closed form via the Wright $\omega$ / Lambert-$W_0$ function $\omega(z) = W_0(e^z)$~\cite{corless1996lambertw}:
+\begin{equation}
+\Lambda_{\text{SN}}^{\text{mod}} = \frac{\omega(\mu T + 1) - 1}{T}, \;
+\lambda_{\text{crit}}^{\text{SN,mod}} = \frac{1 - p}{T}\frac{[\omega(\mu T + 1) - 1]^2}{\omega(\mu T + 1)},
+\end{equation}
+with exact normal-form curvature $c_2^{\text{mod}} = \frac{1}{2}(1-p)T[1 + \omega(\mu T + 1)]/\omega(\mu T + 1) > 0$. By contrast, in Case 1 (Destruction), substituting effective server load $x = (1-p)\Lambda^*$ yields $\Gamma_{\text{dest}}(\Lambda^*) = x(1 - e^{-(\mu-x)T})$, so the critical fold occurs at $x_{\text{SN}} = [\omega(\mu T + 1) - 1]/T$ ($\Lambda_{\text{SN}}^{\text{dest}} = x_{\text{SN}}/(1-p)$) with critical external throughput $\lambda_{\text{crit}}^{\text{SN,dest}}(\mu, T) = [\omega(\mu T + 1) - 1]^2 / [T\omega(\mu T + 1)]$, which is \textbf{strictly invariant to $p \in [0, 1)$} and coincides with Case~2 at $p=0$. At $\mu = 10\text{ s}^{-1}, T = 1\text{ s}, p = 0.25$ ($N=2$ for multi-hop topologies), the critical pairs $(\Lambda_{\text{SN}}^*, \lambda_{\text{crit}}^{\text{SN}})$ across Cases~1--5 are $(10.4302, 6.9360)$, $(7.8227, 5.2020)$, $(6.7316, 3.1713)$, $(7.3034, 3.4780)$, and $(7.6389, 1.5633)\text{ pkt/s}$. For every $\lambda < \lambda_{\text{crit}}^{\text{SN}}$, two fixed points coexist: a stable lower branch $\Lambda_{\text{stable}}^*(\lambda)$ and an unstable upper separatrix $\Lambda_{\text{unstable}}^*(\lambda)$ colliding as $\Delta\Lambda_{\text{sep}} \approx 2\sqrt{(\lambda_{\text{crit}}^{\text{SN}} - \lambda)/c_2}$ as $\lambda \to \lambda_{\text{crit}}^{\text{SN}-}$ (Fig.~\ref{fig:saddle_node_bifurcation}).
+
 \section{Conclusion}
-This paper presented a rigorous and comprehensive mathematical theory for evaluating packet sojourn time and network stability across five distinct topologies under active adversarial attacks and timeout-driven retransmissions. By formulating exact renewal-reward equations, multi-hop hypoexponential moment-matching, stage-wise traffic attenuation, and Erlang visit summations, we demonstrated that retransmissions induce non-linear traffic amplification loops that fundamentally govern system capacity. High-fidelity discrete-event simulations across all five cases confirmed the exceptional accuracy of the theoretical models.
+This paper presented a rigorous mathematical theory for evaluating packet sojourn time, Saddle-Node retry bifurcations, and network stability across five distinct topologies under active adversarial attacks and timeout-driven retransmissions. By formulating exact renewal-reward equations, closed-form Wright-$\omega$ / Lambert-$W_0$ fold thresholds, multi-hop hypoexponential moment-matching, stage-wise traffic attenuation, and Erlang visit summations, we demonstrated that retransmissions induce non-linear traffic amplification loops that fundamentally govern system capacity. High-fidelity discrete-event simulations across all five cases confirmed the accuracy of the theoretical models.
 
 \begin{thebibliography}{99}
 \bibitem{kleinrock1975queueing}
@@ -420,6 +440,12 @@ K.~Fall and S.~Floyd, ``Simulation-based comparisons of Tahoe, Reno, and SACK TC
 
 \bibitem{matloff2008introduction}
 N.~Matloff, ``Introduction to discrete-event simulation and the SimPy language,'' \textit{Dept. of Computer Science, University of California, Davis}, 2008.
+
+\bibitem{corless1996lambertw}
+R.~M.~Corless, G.~H.~Gonnet, D.~E.~G.~Hare, D.~J.~Jeffrey, and D.~E.~Knuth, ``On the Lambert $W$ function,'' \textit{Advances in Computational Mathematics}, vol.~5, no.~1, pp.~329--359, 1996.
+
+\bibitem{strogatz2015nonlinear}
+S.~H.~Strogatz, \textit{Nonlinear Dynamics and Chaos}, 2nd~ed., Westview Press, Boulder, CO, 2015.
 \end{thebibliography}
 
 \begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{fig1_system_model.png}}]{Ilias Chrysovergis}

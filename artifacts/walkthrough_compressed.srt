@@ -1,0 +1,15 @@
+1
+00:00:00,000 --> 00:00:04,500
+aqnet v0.2.0 Bifurcation Studio
+
+2
+00:00:04,500 --> 00:00:09,000
+Closed-form Wright-omega fold
+
+3
+00:00:09,000 --> 00:00:13,500
+Case 1 structural p-invariance
+
+4
+00:00:13,500 --> 00:00:18,000
+SymPy proofs & Chameleon themes

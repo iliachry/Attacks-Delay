@@ -4,6 +4,7 @@ SimPy Discrete-Event Simulation Engine for Adversarial Queueing Networks.
 from __future__ import annotations
 
 import random
+from typing import Any
 
 import numpy as np
 import simpy
@@ -150,7 +151,7 @@ def simulate_tandem(
     warmup_period: float = 1000.0,
     seed: int | None = None,
 ) -> float:
-    """Runs a single replication of Case 3 (Tandem Chain)."""
+    """Runs a single replication of Case 3 (Tandem Chain with end-to-end verification at node N-1)."""
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
@@ -165,6 +166,8 @@ def simulate_tandem(
         while True:
             yield env.timeout(random.expovariate(lambda_arrival))
             pkt = Packet(f"P_{pid}", env.now)
+            pkt.attempt_start_time = env.now
+            pkt.is_attacked = False
             yield queues[0].put(pkt)
             pid += 1
 
@@ -173,18 +176,19 @@ def simulate_tandem(
             pkt = yield queues[node_id].get()
             with servers[node_id].request() as req:
                 yield req
-                if node_id == 0:
-                    pkt.attempt_start_time = env.now
-
                 yield env.timeout(random.expovariate(mu))
 
-                # Check attack or timeout
-                if random.random() < p or (env.now - pkt.attempt_start_time) > W:
-                    # Restart from node 0
-                    yield queues[0].put(pkt)
+                if random.random() < p:
+                    pkt.is_attacked = True
+
+                if node_id < N - 1:
+                    yield queues[node_id + 1].put(pkt)
                 else:
-                    if node_id < N - 1:
-                        yield queues[node_id + 1].put(pkt)
+                    # End-to-end checksum and timeout verification at destination node N - 1
+                    if pkt.is_attacked or (env.now - pkt.attempt_start_time) > W:
+                        pkt.attempt_start_time = env.now
+                        pkt.is_attacked = False
+                        yield queues[0].put(pkt)
                     else:
                         if env.now >= warmup_period:
                             delays.append(env.now - pkt.original_arrival_time)
@@ -207,17 +211,49 @@ def simulate_feedforward(
     warmup_period: float = 1000.0,
     seed: int | None = None,
 ) -> float:
-    """Runs a single replication of Case 4 (Feedforward network)."""
-    return simulate_tandem(
-        p=p,
-        N=N,
-        mu=mu,
-        lambda_arrival=lambda_arr,
-        W=W,
-        sim_duration=sim_duration,
-        warmup_period=warmup_period,
-        seed=seed,
-    )
+    """Runs a single replication of Case 4 (Feedforward network with hop-by-hop stage attenuation)."""
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    env = simpy.Environment()
+    queues = [simpy.Store(env) for _ in range(N)]
+    servers = [simpy.Resource(env, capacity=1) for _ in range(N)]
+    delays: list[float] = []
+
+    def packet_generator():
+        pid = 0
+        while True:
+            yield env.timeout(random.expovariate(lambda_arr))
+            pkt = Packet(f"P_{pid}", env.now)
+            pkt.attempt_start_time = env.now
+            yield queues[0].put(pkt)
+            pid += 1
+
+    def server_process(node_id: int):
+        while True:
+            pkt = yield queues[node_id].get()
+            with servers[node_id].request() as req:
+                yield req
+                yield env.timeout(random.expovariate(mu))
+
+                # Hop-by-hop attack drop-out or cumulative timeout triggers immediate restart at Node 0
+                if random.random() < p or (env.now - pkt.attempt_start_time) > W:
+                    pkt.attempt_start_time = env.now
+                    yield queues[0].put(pkt)
+                else:
+                    if node_id < N - 1:
+                        yield queues[node_id + 1].put(pkt)
+                    else:
+                        if env.now >= warmup_period:
+                            delays.append(env.now - pkt.original_arrival_time)
+
+    env.process(packet_generator())
+    for i in range(N):
+        env.process(server_process(i))
+
+    env.run(until=warmup_period + sim_duration)
+    return float(np.mean(delays)) if delays else float(np.inf)
 
 
 def simulate_feedback(

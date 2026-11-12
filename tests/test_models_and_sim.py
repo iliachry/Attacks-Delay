@@ -255,6 +255,34 @@ def test_cli_subcommands(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "feedback" in captured.out
 
+    # Test run cascade
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "aqnet",
+            "run",
+            "--topology",
+            "cascade",
+            "--lambda-arr",
+            "300.0",
+            "--tau",
+            "0.58",
+            "--batch-size",
+            "4",
+            "--batch-timeout-ms",
+            "25.0",
+            "--reps",
+            "2",
+            "--sim-duration",
+            "2.0",
+        ],
+    )
+    cli_main()
+    captured = capsys.readouterr()
+    assert "cascade" in captured.out
+    assert "Theory (Closed-Form):" in captured.out
+
     # Test run unstable parameter (e.g. arrival rate >= mu)
     monkeypatch.setattr(
         sys, "argv", ["aqnet", "run", "--topology", "one_node_destruction", "--lambda-arr", "15.0", "--mu", "10.0", "--reps", "1", "--sim-duration", "100"]
@@ -357,7 +385,11 @@ def test_cascade_pareto_derivative_and_optimal_tau():
 
 def test_jensen_antifragility_bound():
     """Verify Jensen convexity/antifragility theorem: b=1 is fragile (>0) whereas b in {4, 8} is antifragile (<0)."""
-    from aqnet.cascade import CascadeParams, jensen_antifragility_bound, solve_cascade_delay
+    from aqnet.cascade import (
+        CascadeParams,
+        jensen_antifragility_bound,
+        solve_cascade_delay,
+    )
 
     params = CascadeParams(lam=500.0)
     # 1. Unbatched b=1 is strictly convex / fragile in q
@@ -478,5 +510,509 @@ def test_cascade_stationary_and_nonstationary_hysteresis():
     sim_ns = simulate_nonstationary_hysteresis_simpy(duration_s=8.0, warmup_s=2.0, b=4, params=c_params, seed=9)
     assert sim_ns["max_thinning_accept_prob"] <= 1.0
     assert sim_ns["empirical_chattering_reduction_pct"] > 80.0
+
+
+# --- Saddle-Node Retry Bifurcation & Metastability Tests (aqnet v0.2.0) ---
+
+
+def test_saddle_node_closed_form_wrightomega_and_all_topologies():
+    """Verify Wright-omega closed-form fold vs numerical derivative & curvature across all 5 topologies."""
+    from aqnet.models.bifurcation import (
+        solve_saddle_node_bifurcation,
+        throughput_curve_gamma,
+        verify_symbolic_bifurcation_proofs,
+    )
+
+    proofs = verify_symbolic_bifurcation_proofs()
+    assert proofs["all_symbolic_proofs_verified"] is True
+    assert proofs["stationarity_identity_verified"] is True
+    assert proofs["concavity_curvature_verified"] is True
+    assert proofs["destruction_p_invariance_verified"] is True
+    assert proofs["sqrt_normal_form_verified"] is True
+    assert proofs["lambertw_vs_wrightomega_abs_diff"] < 1e-12
+
+    for topo in (
+        "one_node_modification",
+        "one_node_destruction",
+        "tandem",
+        "feedforward",
+        "feedback",
+    ):
+        sn = solve_saddle_node_bifurcation(topology=topo, p=0.25, mu=10.0, T=1.0, N=2)
+        assert 0.0 < sn.Lambda_sn < sn.Lambda_max
+        assert sn.lambda_crit_sn > 0.0
+        assert sn.d2Gamma_dLambda2 < 0.0
+        assert sn.c2_normal_form > 0.0
+        assert 0.0 < sn.capacity_ratio_vs_naive < 1.0
+
+        # Check first derivative vanishes at Lambda_sn via central differences
+        eps = 1e-4
+        g_plus = throughput_curve_gamma(sn.Lambda_sn + eps, topo, 0.25, 10.0, 1.0, 2)
+        g_minus = throughput_curve_gamma(sn.Lambda_sn - eps, topo, 0.25, 10.0, 1.0, 2)
+        g_zero = throughput_curve_gamma(sn.Lambda_sn, topo, 0.25, 10.0, 1.0, 2)
+        d1_fd = (g_plus - g_minus) / (2.0 * eps)
+        d2_fd = (g_plus - 2.0 * g_zero + g_minus) / (eps**2)
+        assert abs(d1_fd) < 1e-6
+        assert np.isclose(sn.lambda_crit_sn, g_zero, rtol=1e-9)
+        assert np.isclose(sn.d2Gamma_dLambda2, d2_fd, rtol=1e-3)
+
+
+def test_destruction_structural_p_invariance_vs_modification_linear_decay():
+    """Verify Case 1 (Destruction) critical external arrival rate is invariant to p while Case 2 scales as (1-p)."""
+    from aqnet.models.bifurcation import solve_saddle_node_bifurcation
+
+    sn_d0 = solve_saddle_node_bifurcation("one_node_destruction", p=0.0, mu=10.0, T=1.0)
+    for p_val in (0.10, 0.25, 0.50, 0.75):
+        sn_dp = solve_saddle_node_bifurcation("one_node_destruction", p=p_val, mu=10.0, T=1.0)
+        assert np.isclose(sn_dp.lambda_crit_sn, sn_d0.lambda_crit_sn, rtol=1e-11)
+        assert np.isclose(sn_dp.Lambda_sn * (1.0 - p_val), sn_d0.Lambda_sn, rtol=1e-11)
+        assert sn_dp.p_crit_for_lambda(0.5 * sn_d0.lambda_crit_sn) == 1.0
+        assert sn_dp.p_crit_for_lambda(1.1 * sn_d0.lambda_crit_sn) == 0.0
+
+    sn_m0 = solve_saddle_node_bifurcation("one_node_modification", p=0.0, mu=10.0, T=1.0)
+    for p_val in (0.10, 0.25, 0.50, 0.75):
+        sn_mp = solve_saddle_node_bifurcation("one_node_modification", p=p_val, mu=10.0, T=1.0)
+        assert np.isclose(sn_mp.Lambda_sn, sn_m0.Lambda_sn, rtol=1e-12)
+        assert np.isclose(sn_mp.lambda_crit_sn, (1.0 - p_val) * sn_m0.lambda_crit_sn, rtol=1e-12)
+        lam_target = (1.0 - p_val) * sn_m0.lambda_crit_sn
+        assert np.isclose(sn_mp.p_crit_for_lambda(lam_target), p_val, atol=1e-9)
+
+
+def test_dual_fixed_point_branches_and_sqrt_asymptotics():
+    """Verify dual fixed-point solver matches lower-branch delay solvers and square-root normal form near fold."""
+    from aqnet.models.bifurcation import (
+        solve_dual_fixed_points,
+        solve_saddle_node_bifurcation,
+        throughput_curve_gamma,
+    )
+
+    sn = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    lam_sub = 2.0
+    dual = solve_dual_fixed_points(lam_sub, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    assert dual.is_stable is True
+    assert 0.0 < dual.Lambda_stable < sn.Lambda_sn < dual.Lambda_unstable < sn.Lambda_max
+    assert np.isclose(
+        throughput_curve_gamma(dual.Lambda_stable, "one_node_modification", 0.25, 10.0, 1.0),
+        lam_sub,
+        rtol=1e-10,
+    )
+    assert np.isclose(
+        throughput_curve_gamma(dual.Lambda_unstable, "one_node_modification", 0.25, 10.0, 1.0),
+        lam_sub,
+        rtol=1e-10,
+    )
+    th_mod = solve_one_node_modification(lam_sub, p=0.25, mu=10.0, T=1.0)
+    assert np.isclose(dual.expected_total_time_stable, th_mod, rtol=1e-5)
+
+    # Near-fold square-root normal-form accuracy
+    lam_near = sn.lambda_crit_sn - 1e-4
+    dual_near = solve_dual_fixed_points(lam_near, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    rel_err_sqrt = abs(dual_near.Lambda_stable - dual_near.sqrt_asymptotic_stable) / (
+        sn.Lambda_sn - dual_near.Lambda_stable
+    )
+    assert rel_err_sqrt < 0.01
+
+    # Supercritical regime
+    dual_super = solve_dual_fixed_points(
+        sn.lambda_crit_sn + 0.5, "one_node_modification", p=0.25, mu=10.0, T=1.0
+    )
+    assert dual_super.is_stable is False
+    assert np.isnan(dual_super.Lambda_stable)
+    assert np.isinf(dual_super.expected_total_time_stable)
+
+
+def test_simpy_metastable_retry_collapse_and_cli_bifurcation(monkeypatch, capsys):
+    """Verify SimPy subcritical stability vs supercritical collapse and CLI 'bifurcation' subcommand."""
+    from aqnet.models.bifurcation import simulate_metastable_retry_collapse_simpy
+
+    sub = simulate_metastable_retry_collapse_simpy(
+        lambda_ext=1.5, p=0.25, mu=10.0, T=2.0, retry_delay_mean=0.5, sim_time=600.0, n_batches=10, seed=42
+    )
+    assert sub["theory_is_stable"] is True
+    assert sub["collapse_triggered"] is False
+    assert sub["littles_law_rel_error"] < 0.05
+    assert sub["theory_vs_sim_delay_rel_error"] < 0.05
+    assert sub["theory_vs_sim_attempt_rel_error"] < 0.05
+
+    # Metastable separatrix escape: identical subcritical lambda_ext=4.2, without burst vs with burst
+    meta_no_burst = simulate_metastable_retry_collapse_simpy(
+        lambda_ext=4.2,
+        p=0.25,
+        mu=10.0,
+        T=1.0,
+        burst_factor=1.0,
+        max_inflight_cap=35,
+        sim_time=80.0,
+        n_batches=5,
+        seed=7,
+    )
+    meta_with_burst = simulate_metastable_retry_collapse_simpy(
+        lambda_ext=4.2,
+        p=0.25,
+        mu=10.0,
+        T=1.0,
+        burst_factor=4.5,
+        burst_window=(10.0, 28.0),
+        max_inflight_cap=35,
+        sim_time=80.0,
+        n_batches=5,
+        seed=7,
+    )
+    assert meta_no_burst["theory_is_stable"] is True
+    assert meta_no_burst["collapse_triggered"] is False
+    assert meta_with_burst["theory_is_stable"] is True
+    assert meta_with_burst["collapse_triggered"] is True
+    assert np.isnan(meta_with_burst["littles_law_rel_error"])
+    assert np.isnan(meta_with_burst["theory_vs_sim_delay_rel_error"])
+
+    sup = simulate_metastable_retry_collapse_simpy(
+        lambda_ext=6.5,
+        p=0.25,
+        mu=10.0,
+        T=1.0,
+        max_inflight_cap=40,
+        sim_time=50.0,
+        n_batches=5,
+        seed=42,
+    )
+    assert sup["theory_is_stable"] is False
+    assert sup["collapse_triggered"] is True
+    assert np.isnan(sup["littles_law_rel_error"])
+    assert np.isnan(sup["theory_vs_sim_delay_rel_error"])
+
+    import json
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "aqnet",
+            "bifurcation",
+            "--topology",
+            "one_node_modification",
+            "--lambda-arr",
+            "2.0",
+            "--p",
+            "0.25",
+            "--mu",
+            "10.0",
+            "--W",
+            "1.0",
+            "--json",
+        ],
+    )
+    cli_main()
+    out = capsys.readouterr().out
+    parsed_sub = json.loads(out)
+    assert parsed_sub["Lambda_sn"] > 7.8
+    assert parsed_sub["symbolic_proofs_verified"] is True
+
+    # Supercritical JSON output must be strictly valid RFC 8259 JSON (null instead of NaN/Infinity)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "aqnet",
+            "bifurcation",
+            "--topology",
+            "one_node_modification",
+            "--lambda-arr",
+            "8.0",
+            "--p",
+            "0.25",
+            "--mu",
+            "10.0",
+            "--W",
+            "1.0",
+            "--json",
+        ],
+    )
+    cli_main()
+    out_sup = capsys.readouterr().out
+    parsed_sup = json.loads(
+        out_sup,
+        parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"Non-standard JSON constant {c}")),
+    )
+    assert parsed_sup["is_stable"] is False
+    assert parsed_sup["Lambda_stable"] is None
+    assert parsed_sup["expected_total_time_stable"] is None
+
+
+def test_feature_catalog_parity_feat_01_to_08():
+    """Verify FEAT-01..FEAT-08 Master Feature Catalog parity across web studio and Python core."""
+    from pathlib import Path
+
+    from aqnet.models.bifurcation import (
+        solve_dual_fixed_points,
+        solve_saddle_node_bifurcation,
+        verify_symbolic_bifurcation_proofs,
+    )
+    from aqnet.models.cascade import find_optimal_threshold_tau, solve_hysteresis_band
+
+    repo_root = Path(__file__).resolve().parent.parent
+    html_text = (repo_root / "web" / "index.html").read_text(encoding="utf-8")
+    css_text = (repo_root / "web" / "styles.css").read_text(encoding="utf-8")
+    js_text = (repo_root / "web" / "app.js").read_text(encoding="utf-8")
+
+    # FEAT-01: Five-topology switcher + cascade
+    assert "FEAT-01" in html_text and "topology-select" in html_text
+    # FEAT-02: Wright-omega fold & dual-branch solver
+    sn_feat02 = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    dual_feat02 = solve_dual_fixed_points(3.5, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    assert sn_feat02.lambda_crit_sn > 5.0 and dual_feat02.is_stable
+    # FEAT-03: Dual-Canvas Phase Portrait & Critical Capacity Manifold
+    assert "bifurcation-canvas" in html_text and "renderManifoldCanvas" in js_text
+    # FEAT-04: Law L10 Generative Friction Offering (Adversarial Burst Trace)
+    assert "FEAT-04" in html_text and "burst-input" in html_text and "simulateBurstTrajectory" in js_text
+    # FEAT-05: Two-Station Edge-Cloud Confidence Cascade & Quartic Hysteresis
+    assert find_optimal_threshold_tau() > 0.5 and solve_hysteresis_band()["delta_tau_hyst_star"] > 0.0
+    # FEAT-06: SymPy Proof Ledger & LaTeX / BibTeX Citation Modal
+    assert "FEAT-06" in html_text and "proof-dialog" in html_text
+    assert verify_symbolic_bifurcation_proofs()["all_symbolic_proofs_verified"] is True
+    # FEAT-07: Chameleon 3-Theme Polarity Engine & Kanon Regularity
+    for theme_id in ("academic-paper", "metatopia-light", "cyber-gold"):
+        assert theme_id in html_text and theme_id in css_text
+    # FEAT-08: Reproducible CLI & Quality Gate
+    assert (repo_root / "src" / "aqnet" / "cli.py").is_file()
+
+
+def test_cross_solver_parity_and_manuscript_table3_and_web_js():
+    """Verify exact cross-solver parity across all 5 topologies, paper.tex Table 3, and web/app.js."""
+    import json
+    import re
+    import subprocess
+    from pathlib import Path
+
+    from aqnet.models.bifurcation import (
+        solve_dual_fixed_points,
+        solve_saddle_node_bifurcation,
+    )
+
+    # 1. Finite-timeout p=0, B=0 equivalence between Case 1 and Case 2
+    d1_p0 = solve_one_node_destruction(lambda_n=2.5, p=0.0, mu=10.0, T=1.0, backoff=0.0)
+    d2_p0 = solve_one_node_modification(lambda_n=2.5, p=0.0, mu=10.0, T=1.0)
+    assert np.isclose(d1_p0, d2_p0, rtol=1e-7)
+
+    sn1_p0 = solve_saddle_node_bifurcation("one_node_destruction", p=0.0, mu=10.0, T=1.0)
+    sn2_p0 = solve_saddle_node_bifurcation("one_node_modification", p=0.0, mu=10.0, T=1.0)
+    assert np.isclose(sn1_p0.Lambda_sn, sn2_p0.Lambda_sn, rtol=1e-12)
+    assert np.isclose(sn1_p0.lambda_crit_sn, sn2_p0.lambda_crit_sn, rtol=1e-12)
+
+    # 2. Cross-solver delay parity across all 5 topologies against aqnet.models
+    dual_c1 = solve_dual_fixed_points(2.0, "one_node_destruction", p=0.2, mu=10.0, T=2.0, backoff=0.03)
+    assert np.isclose(
+        dual_c1.expected_total_time_stable,
+        solve_one_node_destruction(2.0, p=0.2, mu=10.0, T=2.0, backoff=0.03),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    dual_c2 = solve_dual_fixed_points(2.0, "one_node_modification", p=0.2, mu=10.0, T=2.0)
+    assert np.isclose(
+        dual_c2.expected_total_time_stable,
+        solve_one_node_modification(2.0, p=0.2, mu=10.0, T=2.0),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    # Above-fold convergence guard (1.00001 * lambda_crit_sn must return inf, never a slow Picard residual)
+    sn_c1_guard = solve_saddle_node_bifurcation("one_node_destruction", p=0.25, mu=10.0, T=1.0)
+    sn_c2_guard = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    assert np.isinf(solve_one_node_destruction(sn_c1_guard.lambda_crit_sn * 1.00001, p=0.25, mu=10.0, T=1.0))
+    assert np.isinf(solve_one_node_modification(sn_c2_guard.lambda_crit_sn * 1.00001, p=0.25, mu=10.0, T=1.0))
+
+    dual_c3 = solve_dual_fixed_points(0.15, "tandem", p=0.10, mu=2.0, T=8.0, N=3)
+    assert np.isclose(
+        dual_c3.expected_total_time_stable,
+        solve_tandem_theory(p=0.10, N=3, mu=2.0, lambda_arrival=0.15, W=8.0),
+        rtol=1e-9,
+    )
+
+    dual_c4 = solve_dual_fixed_points(0.15, "feedforward", p=0.10, mu=2.0, T=8.0, N=4)
+    d_ff, lam0_ff, _ = solve_feedforward_theory(N=4, mu=2.0, lambda_arr=0.15, p=0.10, W=8.0)
+    assert np.isclose(dual_c4.Lambda_stable, lam0_ff, rtol=1e-5)
+    assert np.isclose(dual_c4.expected_total_time_stable, d_ff, rtol=1e-5)
+
+    dual_c5 = solve_dual_fixed_points(0.05, "feedback", p=0.10, mu=1.0, T=50.0, N=10)
+    d_fb, lam_fb, fb_details = solve_feedback_theory(N=10, mu=1.0, lambda_arr=0.05, p=0.10, W=50.0)
+    assert np.isclose(dual_c5.Lambda_stable, lam_fb, rtol=1e-5)
+    assert np.isclose(dual_c5.expected_total_time_stable, d_fb, rtol=1e-5)
+    # Case 5 exact renewal-visit duration identity: P_succ * E[D_succ] + (1 - P_succ) * E[D_fail] == E[V] / gamma
+    gamma_fb = 1.0 - lam_fb
+    lhs_visit_time = fb_details["p_succ"] * fb_details["e_d_succ"] + (1.0 - fb_details["p_succ"]) * fb_details["e_d_fail"]
+    rhs_visit_time = fb_details["e_v"] / gamma_fb
+    assert np.isclose(lhs_visit_time, rhs_visit_time, rtol=1e-12, atol=1e-12)
+
+    # 3. Critical fold semistable regime, tiny-lambda bracketing, small-T stability, and validation guards
+    sn_mod = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    dual_fold = solve_dual_fixed_points(sn_mod.lambda_crit_sn, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    assert dual_fold.is_critical_fold is True
+    assert dual_fold.is_stable is False
+    assert dual_fold.stability_regime == "critical_fold_semistable"
+    assert np.isfinite(dual_fold.expected_total_time_stable)
+
+    dual_tiny = solve_dual_fixed_points(1e-4, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    assert dual_tiny.is_stable is True
+    assert dual_tiny.Lambda_unstable > sn_mod.Lambda_sn
+
+    sn_small_t = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1e-6)
+    assert sn_small_t.c2_normal_form > 0.0 and np.isfinite(sn_small_t.lambda_crit_sn)
+
+    for bad_kw in (
+        {"p": float("nan")},
+        {"mu": float("inf")},
+        {"T": -1.0},
+        {"N": 2.5},
+    ):
+        kw = {"topology": "tandem", "p": 0.25, "mu": 10.0, "T": 1.0, "N": 2}
+        kw.update(bad_kw)
+        with pytest.raises(ValueError):
+            solve_saddle_node_bifurcation(**kw)
+
+    # 4. Manuscript Table 3 (tab:bifurcation_summary) digit-for-digit parity against solver
+    repo_root = Path(__file__).resolve().parent.parent
+    paper_tex = (repo_root / "paper.tex").read_text(encoding="utf-8")
+    for topo, row_prefix in (
+        ("one_node_destruction", "Case 1: Destruction"),
+        ("one_node_modification", "Case 2: Modification"),
+        ("tandem", "Case 3: Tandem ($N=2$)"),
+        ("feedforward", "Case 4: Feedforward ($N=2$)"),
+        ("feedback", "Case 5: Feedback ($N=2$)"),
+    ):
+        sn = solve_saddle_node_bifurcation(topo, p=0.25, mu=10.0, T=1.0, N=2)
+        expected_cols = [
+            f"{sn.Lambda_sn:.4f}",
+            f"{sn.lambda_crit_sn:.4f}",
+            f"{sn.rho_sn:.4f}",
+            f"{sn.c2_normal_form:.4f}",
+            f"{sn.naive_capacity:.4f}",
+            f"{sn.capacity_ratio_vs_naive * 100.0:.2f}\\%",
+        ]
+        pattern = re.escape(row_prefix) + r".*?" + r"\s*&\s*".join(re.escape(c) for c in expected_cols)
+        assert re.search(pattern, paper_tex), f"Table 3 mismatch for {topo}: expected {expected_cols}"
+
+    # 5. Node.js cross-language parity with web/app.js across all 5 topologies + exact Cascade & Hysteresis
+    from aqnet.cascade import (
+        CascadeParams,
+        find_optimal_threshold_tau,
+        solve_batch_timeout_moments,
+    )
+    from aqnet.models.cascade_nonstationary import (
+        solve_cascade_delay as solve_cascade_delay_ns,
+    )
+    from aqnet.models.cascade_nonstationary import (
+        solve_hysteresis_band,
+    )
+
+    js_probe = """
+    const studio = require("./web/app.js");
+    const topos = ["one_node_destruction", "one_node_modification", "tandem", "feedforward", "feedback"];
+    const out = { topos: {}, batch: [] };
+    for (const t of topos) {
+      const sn = studio.solveSaddleNodeBifurcation(t, 0.25, 10.0, 1.0, 2);
+      const dual = studio.solveDualFixedPoints(1.2, t, 0.25, 10.0, 1.0, 2);
+      out.topos[t] = {
+        LambdaSn: sn.LambdaSn,
+        lambdaCritSn: sn.lambdaCritSn,
+        c2: sn.c2NormalForm,
+        LambdaStable: dual.LambdaStable,
+        LambdaUnstable: dual.LambdaUnstable,
+        expectedDelay: dual.expectedDelay
+      };
+    }
+    for (const [lo, b, Tm] of [[1.0, 4, 25.0], [70.5, 4, 25.0], [150.0, 4, 25.0], [150.0, 8, 50.0]]) {
+      out.batch.push(studio.solveBatchTimeoutMomentsJS(lo, b, Tm / 1000.0));
+    }
+    studio.state.lambdaExt = 3.5;
+    studio.state.p = 0.25;
+    studio.state.mu = 10.0;
+    studio.state.N = 2;
+    studio.state.T = 1.0;
+    const casDefault = studio.solveCascadeSummaryFromState();
+    studio.state.lambdaExt = 6.5;
+    studio.state.N = 4;
+    studio.state.T = 2.0;
+    const casMod = studio.solveCascadeSummaryFromState();
+    out.casDefault = casDefault;
+    out.casMod = casMod;
+    out.cascadeChanged = (casDefault.tauOpt !== casMod.tauOpt) &&
+                         (casDefault.cBatchB !== casMod.cBatchB) &&
+                         (casDefault.deltaTauHyst !== casMod.deltaTauHyst);
+    console.log(JSON.stringify(out));
+    """
+    js_res = json.loads(subprocess.check_output(["node", "-e", js_probe], cwd=str(repo_root), text=True))
+    assert js_res["cascadeChanged"] is True
+    for topo, jv in js_res["topos"].items():
+        py_sn = solve_saddle_node_bifurcation(topo, p=0.25, mu=10.0, T=1.0, N=2)
+        py_dual = solve_dual_fixed_points(1.2, topo, p=0.25, mu=10.0, T=1.0, N=2)
+        assert np.isclose(jv["LambdaSn"], py_sn.Lambda_sn, rtol=1e-5)
+        assert np.isclose(jv["lambdaCritSn"], py_sn.lambda_crit_sn, rtol=1e-5)
+        assert np.isclose(jv["expectedDelay"], py_dual.expected_total_time_stable, rtol=1e-5)
+
+    for idx, (lo, b, Tm) in enumerate(((1.0, 4, 25.0), (70.5, 4, 25.0), (150.0, 4, 25.0), (150.0, 8, 50.0))):
+        py_bm = solve_batch_timeout_moments(lo, b, Tm)
+        js_bm = js_res["batch"][idx]
+        assert np.isclose(js_bm["E_B_disp"], py_bm["E_B_disp"], rtol=1e-7)
+        assert np.isclose(js_bm["E_W_batch_ms"], py_bm["E_W_batch_ms"], rtol=1e-7)
+
+    cp_def = CascadeParams(lam=500.0)
+    py_tau_def = find_optimal_threshold_tau(mu_D=0.002, mu_P=0.0005, b=4, T_ms=25.0, params=cp_def)
+    py_del_def = solve_cascade_delay_ns(py_tau_def, b=4, T_ms=25.0, q_override=cp_def.q_of_tau(py_tau_def))
+    py_hyst_def = solve_hysteresis_band(lam=500.0, mu_D=0.002, mu_P=0.0005, b=4, T_ms=25.0, params=cp_def)
+    assert np.isclose(js_res["casDefault"]["tauOpt"], py_tau_def, rtol=1e-5)
+    assert np.isclose(js_res["casDefault"]["cBatchB"], py_del_def["C_batch_ms"], rtol=1e-5)
+    assert js_res["casDefault"]["cBatchB"] < 0.0
+    assert np.isclose(js_res["casDefault"]["deltaTauHyst"], py_hyst_def["delta_tau_hyst_star"], rtol=1e-5)
+
+    # Verify Station 1 M/G/1 scaling & overload check in web/app.js at lam=800 and lam=1000
+    from aqnet.cascade import solve_cascade_delay as solve_cascade_delay_st1
+
+    js_st1_probe = """
+    const s = require("./web/app.js");
+    const d800 = s.solveCascadeDelayJS(0.30, { lam: 800.0, b: 4, TBatchMs: 25.0 });
+    const d1000 = s.solveCascadeDelayJS(0.30, { lam: 1000.0, b: 4, TBatchMs: 25.0 });
+    const d1000_ovr = s.solveCascadeDelayJS(0.30, { lam: 1000.0, b: 4, TBatchMs: 25.0, dEdgeMs: 1.8605 });
+    console.log(JSON.stringify({
+      d800_ED: d800.E_D_ms,
+      d800_stable: d800.stable,
+      d1000_inf: !Number.isFinite(d1000.E_D_ms),
+      d1000_stable: d1000.stable,
+      d1000_dED_finite: Number.isFinite(d1000.dED_dq_ms),
+      d1000_ovr_stable: d1000_ovr.stable,
+      d1000_ovr_inf: !Number.isFinite(d1000_ovr.E_D_ms)
+    }));
+    """
+    js_st1 = json.loads(subprocess.check_output(["node", "-e", js_st1_probe], cwd=str(repo_root), text=True))
+    py_d800 = solve_cascade_delay_st1(0.55, b=4, T_ms=25.0, params=CascadeParams(lam=800.0), q_override=0.30)
+    py_d1000 = solve_cascade_delay_st1(0.55, b=4, T_ms=25.0, params=CascadeParams(lam=1000.0), q_override=0.30)
+    assert js_st1["d800_stable"] is True
+    assert np.isclose(js_st1["d800_ED"], py_d800["E_D_ms"], rtol=1e-6)
+    assert js_st1["d1000_stable"] is False and py_d1000["stable"] is False
+    assert js_st1["d1000_inf"] is True and np.isinf(py_d1000["E_D_ms"])
+    assert js_st1["d1000_dED_finite"] is True
+    assert js_st1["d1000_ovr_stable"] is False and js_st1["d1000_ovr_inf"] is True
+
+    # Verify full field mapping in _coerce_params from canonical CascadeParams to cascade_nonstationary
+    from aqnet.models.cascade_nonstationary import _coerce_params
+
+    cp_custom = CascadeParams(lam=600.0, beta_a=4.0, r_slope=0.1, t_gpu_0_ms=20.0)
+    coerced = _coerce_params(cp_custom)
+    assert coerced.lam == 600.0
+    assert coerced.alpha_g == 4.0
+    assert coerced.r_slope == 0.1
+    assert coerced.t0_g_ms == 20.0
+    hb_custom = solve_hysteresis_band(lam=600.0, params=cp_custom)
+    hb_native = solve_hysteresis_band(lam=600.0, params=coerced)
+    assert np.isclose(hb_custom["tau_star"], hb_native["tau_star"], atol=1e-12)
+
+    # Verify 5_n_node_feedback/results_feedback.json matches solve_feedback_theory
+    fb_json = json.loads((repo_root / "5_n_node_feedback" / "results_feedback.json").read_text(encoding="utf-8"))
+    row_n10_p01 = next(r for r in fb_json if r["N"] == 10 and np.isclose(r["p"], 0.1))
+    assert np.isclose(row_n10_p01["theory"], d_fb, rtol=1e-9)
+
+
+
+
+
 
 

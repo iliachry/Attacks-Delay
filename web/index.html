@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="academic-paper">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aqnet v0.2.0 — Adversarial Queueing &amp; Saddle-Node Bifurcation Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar" role="banner">
+    <div class="brand-block">
+      <span class="brand-mark" aria-hidden="true">Λ*</span>
+      <h1 class="brand-title">aqnet v0.2.0 · Saddle-Node Retry Bifurcation Studio</h1>
+    </div>
+    <nav class="mode-nav" aria-label="Analysis Mode">
+      <button type="button" id="tab-bifurcation" class="nav-pill is-active" data-mode="bifurcation" aria-pressed="true">Bifurcation</button>
+      <button type="button" id="tab-cascade" class="nav-pill" data-mode="cascade" aria-pressed="false">Cascade</button>
+      <button type="button" id="tab-topology" class="nav-pill" data-mode="topology" aria-pressed="false">Topologies</button>
+    </nav>
+    <div class="header-actions">
+      <label class="sr-only" for="theme-select">Theme Polarity</label>
+      <select id="theme-select" class="control-select" aria-label="Theme Polarity">
+        <option value="academic-paper">Academic Paper</option>
+        <option value="metatopia-light">Metatopia Light</option>
+        <option value="cyber-gold">Cyber Gold</option>
+      </select>
+      <button type="button" id="btn-open-proofs" class="action-btn">Proofs</button>
+    </div>
+  </header>
+
+  <main class="workspace-grid" id="main-workspace">
+    <!-- Left Macro-Region (2/12): Parameters & Law L10 Burst Offering -->
+    <aside class="panel panel-left" aria-label="Queueing Parameters and Adversarial Burst Offering">
+      <h2 class="section-heading">System Parameters</h2>
+
+      <div class="field-group">
+        <label class="field-label" for="topology-select">Queueing Topology (<abbr title="FEAT-01">FEAT-01</abbr>)</label>
+        <select id="topology-select" class="control-select">
+          <option value="one_node_modification">Case 2: 1-Node Modification (Wright-ω)</option>
+          <option value="one_node_destruction">Case 1: 1-Node Destruction (p-Invariant)</option>
+          <option value="tandem">Case 3: N-Node Tandem Chain (Erlang-N)</option>
+          <option value="feedforward">Case 4: N-Node Feedforward Chain</option>
+          <option value="feedback">Case 5: N-Node Symmetric Feedback Mesh</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <div class="field-row">
+          <label class="field-label" for="slider-lambda">Arrival Rate λ (pkt/s)</label>
+          <output id="out-lambda" for="slider-lambda" class="tabular">3.50</output>
+        </div>
+        <input type="range" id="slider-lambda" min="0.20" max="9.50" step="0.05" value="3.50" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-row">
+          <label class="field-label" for="slider-p">Attack Probability p</label>
+          <output id="out-p" for="slider-p" class="tabular">0.25</output>
+        </div>
+        <input type="range" id="slider-p" min="0.00" max="0.85" step="0.01" value="0.25" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-row">
+          <label class="field-label" for="slider-mu">Service Rate μ (pkt/s)</label>
+          <output id="out-mu" for="slider-mu" class="tabular">10.0</output>
+        </div>
+        <input type="range" id="slider-mu" min="4.0" max="20.0" step="0.5" value="10.0" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-row">
+          <label class="field-label" for="slider-timeout">Timeout Window T (s)</label>
+          <output id="out-timeout" for="slider-timeout" class="tabular">1.00</output>
+        </div>
+        <input type="range" id="slider-timeout" min="0.25" max="4.00" step="0.05" value="1.00" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-row">
+          <label class="field-label" for="slider-nodes">Network Nodes N</label>
+          <output id="out-nodes" for="slider-nodes" class="tabular">2</output>
+        </div>
+        <input type="range" id="slider-nodes" min="2" max="6" step="1" value="2" />
+      </div>
+
+      <div class="offering-box" aria-labelledby="offering-title">
+        <h2 class="section-heading" id="offering-title">Adversarial Burst Trace (FEAT-04)</h2>
+        <label class="field-label" for="burst-input">Burst Multipliers m(t) Sequence</label>
+        <input
+          type="text"
+          id="burst-input"
+          class="control-input tabular"
+          value="1.0, 1.35, 1.95, 2.45, 1.80, 1.0"
+          aria-describedby="offering-hint"
+        />
+        <p id="offering-hint" class="muted-copy">
+          Inject an arrival-burst trace to test whether Λ(t) crosses the unstable separatrix Λ<sub>unstable</sub>*.
+        </p>
+        <div class="button-pair">
+          <button type="button" id="btn-inject-burst" class="action-btn is-primary">Inject Burst</button>
+          <button type="button" id="btn-reset" class="action-btn">Reset</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Macro-Region (7/12): Interactive Phase Portrait Canvas & Single Comparison Table -->
+    <section class="panel panel-center" aria-label="Saddle-Node Phase Portrait and Comparative Table">
+      <div class="canvas-toolbar">
+        <div class="button-pair" role="group" aria-label="Canvas View">
+          <button type="button" id="btn-view-fold" class="nav-pill is-active" data-view="fold">Fold Curve Γ(Λ*)</button>
+          <button type="button" id="btn-view-manifold" class="nav-pill" data-view="manifold">Manifold λ_crit(p)</button>
+          <button type="button" id="btn-view-cascade" class="nav-pill" data-view="cascade">Cascade Hysteresis</button>
+        </div>
+        <div class="button-pair" role="group" aria-label="Workload Presets">
+          <button type="button" id="preset-subcritical" class="action-btn">Stable Basin</button>
+          <button type="button" id="preset-metastable" class="action-btn">Separatrix Escape</button>
+        </div>
+      </div>
+
+      <div class="canvas-stage">
+        <canvas id="bifurcation-canvas" width="920" height="400" aria-label="Saddle-Node Retry Bifurcation Phase Portrait"></canvas>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table tabular" aria-label="Five-Topology Saddle-Node Bifurcation Synthesis">
+          <thead>
+            <tr>
+              <th scope="col">Topology Case</th>
+              <th scope="col">Fold Attempt Rate Λ<sub>SN</sub>*</th>
+              <th scope="col">Critical Capacity λ<sub>crit</sub><sup>SN</sup></th>
+              <th scope="col">Operating Regime &amp; E[D]</th>
+            </tr>
+          </thead>
+          <tbody id="topology-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Right Macro-Region (3/12): Compact 2-Line Inspector Cards (Law L2 <= 35 words) -->
+    <aside class="panel panel-right" aria-label="Mathematical Invariants and Telemetry Inspector">
+      <h2 class="section-heading">Bifurcation Telemetry</h2>
+
+      <article class="inspector-card" id="card-fold">
+        <div class="card-row">
+          <span class="card-label">Wright-ω Saddle-Node Fold</span>
+          <strong class="metric-val tabular" id="metric-lambda-crit">5.202 pkt/s</strong>
+        </div>
+        <p class="card-sub tabular" id="metric-fold-sub">
+          Λ_SN* = 7.821 pkt/s · ρ_SN = 0.782 · c₂ = 0.418 s
+        </p>
+      </article>
+
+      <article class="inspector-card" id="card-branches">
+        <div class="card-row">
+          <span class="card-label">Dual Fixed-Point Branches</span>
+          <strong class="metric-val tabular" id="metric-branches">4.609 / 9.218</strong>
+        </div>
+        <p class="card-sub tabular" id="metric-separatrix-sub">
+          Separatrix gap ΔΛ = 4.609 pkt/s · E[D] = 0.244 s
+        </p>
+      </article>
+
+      <article class="inspector-card" id="card-invariance">
+        <div class="card-row">
+          <span class="card-label">Destruction vs. Modification</span>
+          <strong class="metric-val tabular" id="metric-p-crit">p_crit = 0.495</strong>
+        </div>
+        <p class="card-sub tabular" id="metric-invariance-sub">
+          Case 1 λ_crit^SN = 6.936 (p-invariant) vs. Case 2 5.202
+        </p>
+      </article>
+
+      <article class="inspector-card" id="card-burst">
+        <div class="card-row">
+          <span class="card-label">Burst Trajectory Verdict</span>
+          <strong class="metric-val tabular" id="offering-verdict">BASIN RECOVERED</strong>
+        </div>
+        <p class="card-sub tabular" id="offering-sub">
+          Peak Λ(t) = 6.84 pkt/s stays below separatrix Λ_u*
+        </p>
+      </article>
+
+      <article class="inspector-card" id="card-cascade">
+        <div class="card-row">
+          <span class="card-label" id="label-cascade-card">Confidence Cascade (b=4, T=25ms)</span>
+          <strong class="metric-val tabular" id="metric-cascade-tau">τ* = 0.802</strong>
+        </div>
+        <p class="card-sub tabular" id="metric-cascade-sub">
+          C_batch = -1.2 ms · Δτ_hyst* = 0.033
+        </p>
+      </article>
+    </aside>
+  </main>
+
+  <footer class="app-footer" role="contentinfo">
+    <div class="footer-left">
+      <svg class="eu-emblem" viewBox="0 0 36 24" width="27" height="18" aria-label="European Research Standard Emblem">
+        <rect width="36" height="24" rx="2" fill="#003399" />
+        <g fill="#ffcc00">
+          <circle cx="18" cy="5" r="1.1" />
+          <circle cx="21.5" cy="5.9" r="1.1" />
+          <circle cx="24.1" cy="8.5" r="1.1" />
+          <circle cx="25" cy="12" r="1.1" />
+          <circle cx="24.1" cy="15.5" r="1.1" />
+          <circle cx="21.5" cy="18.1" r="1.1" />
+          <circle cx="18" cy="19" r="1.1" />
+          <circle cx="14.5" cy="18.1" r="1.1" />
+          <circle cx="11.9" cy="15.5" r="1.1" />
+          <circle cx="11" cy="12" r="1.1" />
+          <circle cx="11.9" cy="8.5" r="1.1" />
+          <circle cx="14.5" cy="5.9" r="1.1" />
+        </g>
+      </svg>
+      <span>Ilias Chrysovergis · Imperial College London &amp; Metatopia · SymPy + SimPy Verified</span>
+    </div>
+    <span class="tabular" id="footer-status">SymPy 4/4 Identities Verified · Conservation Residual |Γ(Λ*) - λ| = 0.00e+0</span>
+  </footer>
+
+  <!-- Progressive Disclosure Proof & BibTeX Modal (FEAT-06 / Law L6) -->
+  <dialog id="proof-dialog" class="proof-modal" aria-labelledby="dialog-title">
+    <div class="modal-header">
+      <h2 class="section-heading" id="dialog-title">Symbolic Proofs (SymPy) &amp; Reproducible Citation (FEAT-06)</h2>
+      <button type="button" id="btn-close-proofs" class="action-btn">Close</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted-copy">
+        Machine-verified computer-algebra identities from <code>aqnet.models.bifurcation.verify_symbolic_bifurcation_proofs()</code>:
+      </p>
+      <table class="data-table tabular">
+        <thead>
+          <tr>
+            <th scope="col">Theorem / Identity</th>
+            <th scope="col">Closed-Form Algebraic Law</th>
+            <th scope="col">SymPy Residual</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Theorem 1 (Wright-ω Fold)</td>
+            <td>(1 + Λ_SN* T) exp(1 + Λ_SN* T) = exp(μT + 1) ⇒ Λ_SN* = [ω(μT + 1) - 1] / T</td>
+            <td>0 (Verified)</td>
+          </tr>
+          <tr>
+            <td>Theorem 1b (Fold Curvature c₂)</td>
+            <td>Γ_mod''(Λ_SN*) = -(1 - p) T [1 + ω(μT + 1)] / ω(μT + 1) &lt; 0</td>
+            <td>0 (Verified)</td>
+          </tr>
+          <tr>
+            <td>Corollary 1 (Case 1 p-Invariance)</td>
+            <td>∂/∂p [x (1 - exp(-(μ - x)T))] ≡ 0 for x = (1 - p)Λ*</td>
+            <td>0 (Verified)</td>
+          </tr>
+          <tr>
+            <td>Proposition 1 (Local Square-Root Split)</td>
+            <td>ΔΛ_sep(λ) ≈ 2 √((λ_crit^SN - λ)/c₂), ∂Λ_stable*/∂λ ≈ [2√(c₂ Δλ)]⁻¹ (as λ → λ_crit^SN⁻)</td>
+            <td>0 (Verified)</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre id="bibtex-block" class="code-block tabular">@article{chrysovergis2026adversarial,
+  author  = {Chrysovergis, Ilias},
+  title   = {Adversarial Delay Amplification and Saddle-Node Retry Bifurcations in Queueing Networks},
+  journal = {IEEE Networking Letters / arXiv preprint},
+  year    = {2026},
+  version = {aqnet-0.2.0}
+}</pre>
+      <div class="button-pair">
+        <button type="button" id="btn-copy-bibtex" class="action-btn is-primary">Copy BibTeX</button>
+        <button type="button" id="btn-copy-json" class="action-btn">Copy State JSON</button>
+        <span id="copy-feedback" class="muted-copy tabular" aria-live="polite"></span>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

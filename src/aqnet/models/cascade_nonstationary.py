@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from scipy.optimize import brentq
@@ -94,19 +94,64 @@ class CascadeParams:
 
 
 
-def _coerce_params(params: Optional[Any] = None) -> CascadeParams:
+def _coerce_params(params: Any | None = None) -> CascadeParams:
     if params is None:
         return CascadeParams()
     if isinstance(params, CascadeParams):
         return params
-    return CascadeParams(lam=float(getattr(params, "lam", 500.0)))
+    lam_val = float(getattr(params, "lam", 500.0))
+    alpha_g = float(getattr(params, "alpha_g", getattr(params, "beta_a", 2.8)))
+    beta_g = float(getattr(params, "beta_g", getattr(params, "beta_b", 1.2)))
+    r_slope = float(getattr(params, "r_slope", 0.30731157))
+    gamma_r = float(getattr(params, "gamma_r", getattr(params, "gamma_gain", 1.0)))
+    t0_net_ms = float(getattr(params, "t0_net_ms", getattr(params, "t_net_0_ms", 0.45)))
+    t1_net_ms = float(getattr(params, "t1_net_ms", getattr(params, "t_net_1_ms", 0.25)))
+    t0_g_ms = float(getattr(params, "t0_g_ms", getattr(params, "t_gpu_0_ms", 2.05)))
+    t1_g_ms = float(getattr(params, "t1_g_ms", getattr(params, "t_gpu_1_ms", 0.25)))
+    cs2_g = float(getattr(params, "cs2_g", getattr(params, "C_S2_sq", 0.05)))
+    p_s_g_w = float(getattr(params, "p_s_g_w", getattr(params, "P_s_G", 73.965)))
+    p_idle_p8_w = float(getattr(params, "p_idle_p8_w", getattr(params, "P_idle_P8", 20.28)))
+    p_idle_p0_w = float(getattr(params, "p_idle_p0_w", getattr(params, "P_idle_P0", 73.41)))
+    if hasattr(params, "tau_p8_ms"):
+        tau_p8_ms = float(params.tau_p8_ms)
+    elif hasattr(params, "tau_P8_s"):
+        tau_p8_ms = float(params.tau_P8_s) * 1000.0
+    else:
+        tau_p8_ms = 25.0
+    if hasattr(params, "e_dyn_mj"):
+        e_dyn_mj = float(params.e_dyn_mj)
+    elif hasattr(params, "e_dyn_G_mJ") or hasattr(params, "e_net_mJ"):
+        e_dyn_mj = float(getattr(params, "e_dyn_G_mJ", 137.129)) + float(getattr(params, "e_net_mJ", 2.50))
+    else:
+        e_dyn_mj = 139.629
+    d_edge_ms = float(getattr(params, "d_edge_ms", 1.8605))
+    p_edge_w = float(getattr(params, "p_edge_w", 8.7950))
+    return CascadeParams(
+        lam=lam_val,
+        alpha_g=alpha_g,
+        beta_g=beta_g,
+        r_slope=r_slope,
+        gamma_r=gamma_r,
+        d_edge_ms=d_edge_ms,
+        p_edge_w=p_edge_w,
+        t0_net_ms=t0_net_ms,
+        t1_net_ms=t1_net_ms,
+        t0_g_ms=t0_g_ms,
+        t1_g_ms=t1_g_ms,
+        cs2_g=cs2_g,
+        e_dyn_mj=e_dyn_mj,
+        p_s_g_w=p_s_g_w,
+        p_idle_p8_w=p_idle_p8_w,
+        p_idle_p0_w=p_idle_p0_w,
+        tau_p8_ms=tau_p8_ms,
+    )
 
 
 def solve_batch_timeout_moments(
     lam_off: float,
     b: int = 4,
     T_ms: float = 25.0,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Exact renewal-reward batch accumulation moments under Poisson offload stream
     of rate lam_off (frames/s), target micro-batch size b >= 1, and deadline timeout
@@ -171,7 +216,7 @@ def _delay_components(
     b: int,
     T_ms: float,
     params: CascadeParams,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Internal helper returning decomposed delay terms at escalation fraction q."""
     q_c = float(np.clip(q, 0.0, 1.0))
     if q_c <= 1e-12:
@@ -232,9 +277,9 @@ def solve_cascade_delay(
     tau: float,
     b: int = 4,
     T_ms: float = 25.0,
-    params: Optional[CascadeParams] = None,
-    q_override: Optional[float] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+    q_override: float | None = None,
+) -> dict[str, float]:
     """
     Compute end-to-end expected cascade latency E[D] and its exact 3-term second-order
     curvature decomposition d^2 E[D]/dq^2 = C_batch + C_amort + C_queue.
@@ -299,7 +344,7 @@ def _power_components(
     b: int,
     T_ms: float,
     params: CascadeParams,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Internal helper returning decomposed power terms at escalation fraction q."""
     q_c = float(np.clip(q, 0.0, 0.9999))
     if q_c <= 1e-12:
@@ -339,9 +384,9 @@ def solve_cascade_power(
     tau: float,
     b: int = 4,
     T_ms: float = 25.0,
-    params: Optional[CascadeParams] = None,
-    q_override: Optional[float] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+    q_override: float | None = None,
+) -> dict[str, float]:
     """
     Compute end-to-end expected cascade power E[P] (W) and its first/second
     derivatives with respect to escalation fraction q and threshold tau.
@@ -391,8 +436,8 @@ def solve_pareto_derivative(
     T_ms: float = 25.0,
     mu_D: float = 0.002,
     mu_P: float = 0.0005,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+) -> dict[str, float]:
     """
     Compute the distribution-invariant Pareto frontier marginal rate of substitution (MRS):
       dE[A]/dE[D] = r_1(tau) / (dE[D]/dq)
@@ -436,7 +481,7 @@ def find_optimal_threshold_tau(
     mu_P: float = 0.0005,
     b: int = 4,
     T_ms: float = 25.0,
-    params: Optional[CascadeParams] = None,
+    params: CascadeParams | None = None,
 ) -> float:
     """
     Solve the first-order Lagrangian optimality condition:
@@ -466,9 +511,9 @@ def jensen_antifragility_bound(
     T_ms: float = 25.0,
     sigma_eps: float = 0.03,
     delta_max: float = 0.05,
-    params: Optional[CascadeParams] = None,
-    q_override: Optional[float] = None,
-) -> Dict[str, Any]:
+    params: CascadeParams | None = None,
+    q_override: float | None = None,
+) -> dict[str, Any]:
     """
     Second-order Taylor/Jensen volatility bound for expected cascade delay and power
     under zero-mean offload fraction jitter epsilon_q with variance sigma_eps^2:
@@ -518,8 +563,8 @@ def solve_nonstationary_envelope(
     b: int = 4,
     T_ms: float = 25.0,
     rho_max: float = 0.85,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+) -> dict[str, float]:
     """
     Theorem 5 (Non-Stationary Arrival Envelope & Implicit Utilization Cap):
     Given a time-varying arrival intensity lam(s) decomposed into a locally
@@ -537,7 +582,7 @@ def solve_nonstationary_envelope(
       rho_G^raw(q, b; lam_sup) = (q * lam_sup / (1000 * b_bar(q * lam_sup, b, T_ms))) * S_G(b_bar) <= rho_max
     over the closed interval q in [0, 1] to obtain the safety cap tau_max^env(lam_sup, b).
     """
-    p_base = params or CascadeParams()
+    p_base = _coerce_params(params)
     w_eff = max(float(W_s), 1e-6)
     tc_eff = max(float(tau_corr_s), 0.0)
     drift_pointwise = float(lam_lip) * w_eff
@@ -643,8 +688,8 @@ def solve_threshold_lambda_sensitivity(
     mu_P: float = 0.0005,
     b: int = 4,
     T_ms: float = 25.0,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+) -> dict[str, float]:
     """
     Proposition 3 (Conditional Implicit Sensitivity of Optimal Threshold to Arrival Rate):
     On any smooth interior branch tau*(lam) in (0, 1) where the first-order optimality
@@ -659,7 +704,7 @@ def solve_threshold_lambda_sensitivity(
     mixed marginal arrival-rate cost sensitivity (so d tau*/d lam < 0 iff C_lam > 0).
     At active KKT boundary solutions (tau* in {0, 1}), the subgradient derivative vanishes (0.0).
     """
-    p_base = params or CascadeParams()
+    p_base = _coerce_params(params)
     lam_f = max(float(lam), 1e-3)
     p_lam = CascadeParams(**{**p_base.__dict__, "lam": lam_f})
 
@@ -733,8 +778,8 @@ def solve_hysteresis_band(
     kappa_sw: float = 1.2e-4,
     sigma_lam: float = 75.0,
     tau_corr_s: float = 0.20,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+) -> dict[str, float]:
     """
     Theorem 6 (Confidence-Threshold Quartic Hysteresis Deadband Bound):
     Under stochastic arrival fluctuations lam(t) with variance sigma_lam^2 and
@@ -775,7 +820,7 @@ def solve_hysteresis_band(
     tau_minus = max(0.0, tau_star - delta_tau_star)
     tau_plus = min(1.0, tau_star + delta_tau_star)
 
-    p_lam = CascadeParams(**{**(params or CascadeParams()).__dict__, "lam": float(lam)})
+    p_lam = CascadeParams(**{**_coerce_params(params).__dict__, "lam": float(lam)})
     q_minus = p_lam.q_of_tau(tau_minus)
     q_plus = p_lam.q_of_tau(tau_plus)
 
@@ -820,7 +865,7 @@ def solve_hysteresis_band(
     }
 
 
-def verify_symbolic_cascade_proofs() -> Dict[str, Any]:
+def verify_symbolic_cascade_proofs() -> dict[str, Any]:
     """
     Run SymPy exact symbolic computer-algebra verification for Paper 2's analytical theorems:
     1. Theorem 1 (Renewal-Reward Batch Accumulation): exact boundary limits T_max -> oo and lam_off -> 0+.
@@ -877,7 +922,7 @@ def verify_symbolic_cascade_proofs() -> Dict[str, Any]:
     d2_regret = sp.diff(regret, delta, 2)
 
     sol_delta = sp.solve(d_regret, delta)
-    delta_opt = [s for s in sol_delta if s.is_real is not False][0]
+    delta_opt = next(s for s in sol_delta if s.is_real is not False)
     expected_formula = (3 * kappa_sw * D_tau / H_L) ** sp.Rational(1, 4)
     quartic_root_residual = sp.simplify(delta_opt**4 - expected_formula**4)
     d2_at_opt = sp.simplify(d2_regret.subs(delta, expected_formula))
@@ -891,7 +936,7 @@ def verify_symbolic_cascade_proofs() -> Dict[str, Any]:
     g_occ = delta - sp.Abs(x_s)
     bm_ex2 = sp.simplify(sp.integrate(x_s**2 * g_occ, (x_s, -delta, delta)) / sp.integrate(g_occ, (x_s, -delta, delta)))
     regret_bm = sp.Rational(1, 2) * H_L * bm_ex2 + kappa_sw * (2 * D_tau / delta**2)
-    sol_bm = [s for s in sp.solve(sp.diff(regret_bm, delta), delta) if s.is_real is not False][0]
+    sol_bm = next(s for s in sp.solve(sp.diff(regret_bm, delta), delta) if s.is_real is not False)
     expected_bm_formula = (24 * kappa_sw * D_tau / H_L) ** sp.Rational(1, 4)
     bm_quartic_root_residual = sp.simplify(sol_bm**4 - expected_bm_formula**4)
 
@@ -920,8 +965,8 @@ def simulate_stationary_cascade_simpy(
     warmup_s: float = 5.0,
     n_batches: int = 20,
     seed: int = 42,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, float]:
+    params: CascadeParams | None = None,
+) -> dict[str, float]:
     """
     Stationary discrete-event SimPy validation of Theorem 1 (batch-timeout renewal moments)
     and Theorem 3 (expected cascade delay E[D]) with warm-up discard, 20 batch-means
@@ -929,7 +974,7 @@ def simulate_stationary_cascade_simpy(
     """
     import simpy
 
-    p_base = params or CascadeParams()
+    p_base = _coerce_params(params)
     p = CascadeParams(**{**p_base.__dict__, "lam": float(lam)})
     theory = solve_cascade_delay(p.tau_of_q(q), b=b, T_ms=T_ms, params=p, q_override=q)
 
@@ -939,10 +984,10 @@ def simulate_stationary_cascade_simpy(
     env = simpy.Environment()
     gpu_server = simpy.Resource(env, capacity=1)
 
-    w_batch_samples_ms: List[float] = []
-    e2e_delay_samples_ms: List[float] = []
-    batch_sizes: List[int] = []
-    timeout_flags: List[int] = []
+    w_batch_samples_ms: list[float] = []
+    e2e_delay_samples_ms: list[float] = []
+    batch_sizes: list[int] = []
+    timeout_flags: list[int] = []
 
     # Time-integrated batch buffer occupancy for Little's Law check
     area_in_batch_buffer = 0.0
@@ -950,8 +995,8 @@ def simulate_stationary_cascade_simpy(
     cur_buffer_count = 0
     post_warmup_offloaded = 0
 
-    pending: List[float] = []
-    timer_proc: List[Optional[simpy.events.Process]] = [None]
+    pending: list[float] = []
+    timer_proc: list[simpy.events.Process | None] = [None]
     k_shape = 1.0 / max(p.cs2_g, 1e-4)
 
     def update_buffer_area(now_t: float) -> None:
@@ -962,7 +1007,7 @@ def simulate_stationary_cascade_simpy(
                 area_in_batch_buffer += cur_buffer_count * (now_t - t0)
         last_buffer_change_t = max(now_t, warmup_s)
 
-    def dispatch(items_t: List[float], timed_out: bool) -> simpy.events.Generator:
+    def dispatch(items_t: list[float], timed_out: bool) -> simpy.events.Generator:
         nonlocal post_warmup_offloaded
         b_act = len(items_t)
         t_disp = env.now
@@ -992,7 +1037,7 @@ def simulate_stationary_cascade_simpy(
                 t_s_ms = (p.t0_net_ms + p.t0_g_ms) + (p.t1_net_ms + p.t1_g_ms) * b_act
                 e2e_delay_samples_ms.append(p.d_edge_ms + w_b_ms + w_q_ms + t_s_ms)
 
-    def timer_watch(target_list: List[float]) -> simpy.events.Generator:
+    def timer_watch(target_list: list[float]) -> simpy.events.Generator:
         nonlocal cur_buffer_count
         try:
             yield env.timeout(T_ms / 1000.0)
@@ -1084,8 +1129,8 @@ def simulate_nonstationary_hysteresis_simpy(
     b: int = 4,
     T_ms: float = 25.0,
     seed: int = 42,
-    params: Optional[CascadeParams] = None,
-) -> Dict[str, Any]:
+    params: CascadeParams | None = None,
+) -> dict[str, Any]:
     """
     Discrete-event SimPy validation of the two-tier cascade under a doubly-stochastic
     (Cox) sinusoidal + Ornstein-Uhlenbeck bursty arrival stream lam(t) clipped to
@@ -1111,8 +1156,8 @@ def simulate_nonstationary_hysteresis_simpy(
 
     rng = np.random.default_rng(seed)
     t_cur = 0.0
-    arrivals_s: List[float] = []
-    lam_trace: List[float] = []
+    arrivals_s: list[float] = []
+    lam_trace: list[float] = []
     ou_state = 0.0
     tau_corr = max(float(tau_corr_s), 1e-6)
     max_accept_prob = 0.0
@@ -1135,8 +1180,7 @@ def simulate_nonstationary_hysteresis_simpy(
         accept_prob = lam_inst / lam_ub
         if accept_prob < 0.0 or accept_prob > 1.0:
             raise ValueError(f"Invalid thinning acceptance probability: {accept_prob}")
-        if accept_prob > max_accept_prob:
-            max_accept_prob = accept_prob
+        max_accept_prob = max(max_accept_prob, accept_prob)
         if float(rng.random()) <= accept_prob:
             arrivals_s.append(t_cur)
             lam_trace.append(lam_inst)
@@ -1171,24 +1215,24 @@ def simulate_nonstationary_hysteresis_simpy(
         delta_hyst_grid[idx] = hb["delta_tau_hyst_star"]
         tau_env_grid[idx] = env_res["tau_max_env"]
 
-    def run_policy(policy: str) -> Dict[str, Any]:
+    def run_policy(policy: str) -> dict[str, Any]:
         env = simpy.Environment()
         gpu_server = simpy.Resource(env, capacity=1)
 
-        delays_ms: List[float] = []
-        acc_gains: List[float] = []
-        arr_times_rec: List[float] = []
-        offload_flags: List[int] = []
-        batch_sizes_disp: List[int] = []
+        delays_ms: list[float] = []
+        acc_gains: list[float] = []
+        arr_times_rec: list[float] = []
+        offload_flags: list[int] = []
+        batch_sizes_disp: list[int] = []
         switch_count = 0
 
         tau_cur = float(np.interp(lam_mean, lam_grid, tau_star_grid))
         last_tick_idx = -1
 
-        pending_frames: List[tuple[int, float]] = []
-        batch_timer_proc: List[Optional[simpy.events.Process]] = [None]
+        pending_frames: list[tuple[int, float]] = []
+        batch_timer_proc: list[simpy.events.Process | None] = [None]
 
-        def dispatch_batch(items: List[tuple[int, float]]) -> simpy.events.Generator:
+        def dispatch_batch(items: list[tuple[int, float]]) -> simpy.events.Generator:
             b_act = len(items)
             batch_sizes_disp.append(b_act)
             t_net_s = (p.t0_net_ms + p.t1_net_ms * b_act) / 1000.0
@@ -1209,7 +1253,7 @@ def simulate_nonstationary_hysteresis_simpy(
                     arr_times_rec.append(t_arr)
                     offload_flags.append(1)
 
-        def timeout_watcher(cycle_items: List[tuple[int, float]]) -> simpy.events.Generator:
+        def timeout_watcher(cycle_items: list[tuple[int, float]]) -> simpy.events.Generator:
             try:
                 yield env.timeout(T_ms / 1000.0)
                 if pending_frames and pending_frames is cycle_items:

@@ -3,6 +3,8 @@ Analytical solvers for single-node queueing under adversarial attacks (Cases 1 &
 """
 
 import numpy as np
+from scipy.optimize import brentq
+from scipy.special import wrightomega
 
 
 def solve_one_node_destruction(
@@ -12,7 +14,7 @@ def solve_one_node_destruction(
     T: float = 2.0,
     backoff: float = 0.03,
     max_iter: int = 500,
-    tol: float = 1e-8,
+    tol: float = 1e-11,
 ) -> float:
     """
     Fixed-point solver for single-node M/M/1 delay under pre-service destruction (Case 1).
@@ -31,7 +33,7 @@ def solve_one_node_destruction(
         Deterministic backoff penalty per retransmission.
     max_iter : int, default=500
         Maximum iterations for fixed-point convergence.
-    tol : float, default=1e-8
+    tol : float, default=1e-11
         Convergence tolerance.
 
     Returns
@@ -39,44 +41,43 @@ def solve_one_node_destruction(
     float
         Expected sojourn time E[D]. Returns np.inf if unstable.
     """
-    Lambda_star = lambda_n
-    for _ in range(max_iter):
-        if Lambda_star >= mu * 0.999:
+    if p >= 1.0 or p < 0.0 or lambda_n < 0.0 or lambda_n >= mu or T <= 0.0:
+        return float(np.inf)
+    if lambda_n == 0.0:
+        p_succ_0 = (1.0 - p) * (1.0 - float(np.exp(-mu * T)))
+        if p_succ_0 <= 0.0:
             return float(np.inf)
+        return float((1.0 / p_succ_0) * ((1.0 - p) / mu) + ((1.0 - p_succ_0) / p_succ_0) * backoff)
 
-        lambda_eff = Lambda_star * (1.0 - p)
-        rho_eff = lambda_eff / mu
-        if rho_eff >= 1.0:
-            return float(np.inf)
-
-        # M/M/1 waiting time in queue based on effective utilization
-        E_W = rho_eff / (mu * (1.0 - rho_eff))
-        E_S = 1.0 / mu
-
-        # Total sojourn time CDF for M/M/1: P(W_q + S <= T)
-        gamma_rate = mu - lambda_eff
-        P_complete_in_time = 1.0 - rho_eff * np.exp(-gamma_rate * T)
-
-        # Probability of success per attempt: not attacked AND completes within T
-        P_succ = (1.0 - p) * P_complete_in_time
-
-        if P_succ <= 1e-7:
-            return float(np.inf)
-
-        E_A = 1.0 / P_succ
-
-        # Fixed point update on total arrival attempts
-        Lambda_star_new = lambda_n * E_A
-
-        if np.isclose(Lambda_star_new, Lambda_star, atol=tol):
-            break
-        Lambda_star = Lambda_star_new
-
-    # Stability condition: total attempt arrival rate must not saturate queue capacity
-    if Lambda_star >= mu:
+    # Exact closed-form Wright-omega Saddle-Node fold check (p-invariant critical capacity)
+    w_val = float( np.real(wrightomega(mu * T + 1.0)) )
+    lambda_crit_sn = ((w_val - 1.0) ** 2) / (T * w_val)
+    if lambda_n > lambda_crit_sn:
         return float(np.inf)
 
-    # Effective arrival rate after pre-service packet destruction
+    Lambda_sn = (w_val - 1.0) / ((1.0 - p) * T)
+
+    def _residual(lam_star: float) -> float:
+        lam_eff = lam_star * (1.0 - p)
+        if lam_eff >= mu:
+            return -lambda_n
+        p_s = (1.0 - p) * (1.0 - float(np.exp(-(mu - lam_eff) * T)))
+        return lam_star * p_s - lambda_n
+
+    if abs(lambda_n - lambda_crit_sn) <= 1e-15:
+        Lambda_star = Lambda_sn
+    elif _residual(Lambda_sn) < -1e-12:
+        return float(np.inf)
+    else:
+        try:
+            Lambda_star = float(brentq(_residual, 0.0, Lambda_sn, xtol=1e-14, rtol=1e-14, maxiter=max(max_iter, 200)))
+        except ValueError:
+            return float(np.inf)
+
+    if abs(_residual(Lambda_star)) > max(tol, 1e-9):
+        return float(np.inf)
+
+    # Stability condition: effective server arrival rate must not saturate server capacity
     lambda_eff = Lambda_star * (1.0 - p)
     rho_eff = lambda_eff / mu
     if rho_eff >= 1.0:
@@ -86,7 +87,7 @@ def solve_one_node_destruction(
     E_S = 1.0 / mu
 
     gamma_rate = mu - lambda_eff
-    P_timeout_given_not_attacked = rho_eff * np.exp(-gamma_rate * T)
+    P_timeout_given_not_attacked = np.exp(-gamma_rate * T)
     P_succ = (1.0 - p) * (1.0 - P_timeout_given_not_attacked)
 
     if P_succ <= 1e-7:
@@ -105,7 +106,7 @@ def solve_one_node_modification(
     mu: float = 10.0,
     T: float = 2.0,
     max_iter: int = 200,
-    tol: float = 1e-7,
+    tol: float = 1e-11,
 ) -> float:
     """
     Fixed-point solver for single-node M/M/1 delay under post-service modification (Case 2).
@@ -122,7 +123,7 @@ def solve_one_node_modification(
         Timeout threshold.
     max_iter : int, default=200
         Maximum iterations for fixed-point convergence.
-    tol : float, default=1e-7
+    tol : float, default=1e-11
         Convergence tolerance.
 
     Returns
@@ -130,32 +131,44 @@ def solve_one_node_modification(
     float
         Expected sojourn time E[D]. Returns np.inf if unstable.
     """
-    Lambda_star = lambda_n
-    for _ in range(max_iter):
-        if Lambda_star >= mu:
-            return float(np.inf)
-
-        # M/M/1 delay for one attempt
-        E_S = 1.0 / (mu - Lambda_star)
-
-        # Probability of success in one attempt: No attack and No timeout
-        P_succ = (1.0 - p) * (1.0 - np.exp(-T / E_S))
-
-        if P_succ <= 0:
-            return float(np.inf)
-
-        # Expected number of attempts
-        E_A = 1.0 / P_succ
-
-        # New effective traffic rate
-        Lambda_star_new = lambda_n * E_A
-
-        if np.isclose(Lambda_star_new, Lambda_star, atol=tol):
-            break
-        Lambda_star = Lambda_star_new
-
-    if Lambda_star >= mu:
+    if p >= 1.0 or p < 0.0 or lambda_n < 0.0 or lambda_n >= mu or T <= 0.0:
         return float(np.inf)
+    if lambda_n == 0.0:
+        p_succ_0 = (1.0 - p) * (1.0 - float(np.exp(-mu * T)))
+        if p_succ_0 <= 0.0:
+            return float(np.inf)
+        return float(1.0 / (p_succ_0 * mu))
+
+    w_val = float(np.real(wrightomega(mu * T + 1.0)))
+    lambda_crit_sn = (1.0 - p) * ((w_val - 1.0) ** 2) / (T * w_val)
+    if lambda_n > lambda_crit_sn:
+        return float(np.inf)
+
+    Lambda_sn = (w_val - 1.0) / T
+
+    def _residual(lam_star: float) -> float:
+        if lam_star >= mu:
+            return -lambda_n
+        p_s = (1.0 - p) * (1.0 - float(np.exp(-(mu - lam_star) * T)))
+        return lam_star * p_s - lambda_n
+
+    if abs(lambda_n - lambda_crit_sn) <= 1e-15:
+        Lambda_star = Lambda_sn
+    elif _residual(Lambda_sn) < -1e-12:
+        return float(np.inf)
+    else:
+        try:
+            Lambda_star = float(brentq(_residual, 0.0, Lambda_sn, xtol=1e-14, rtol=1e-14, maxiter=max(max_iter, 200)))
+        except ValueError:
+            return float(np.inf)
+
+    if Lambda_star >= mu or abs(_residual(Lambda_star)) > max(tol, 1e-9):
+        return float(np.inf)
+
+    P_succ = (1.0 - p) * (1.0 - float(np.exp(-(mu - Lambda_star) * T)))
+    if P_succ <= 0.0:
+        return float(np.inf)
+    E_A = 1.0 / P_succ
 
     # Renewal theory delay
     return float(E_A * (1.0 / (mu - Lambda_star)))
