@@ -2,13 +2,15 @@
 aqnet: Mathematical Modeling & Discrete-Event Simulation of Multi-Node Queueing Networks Under Adversarial Attacks.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Ilias Chrysovergis"
 
 from aqnet import cascade
 from aqnet.models.bifurcation import (
     DualBranchFixedPointResult,
     SaddleNodeBifurcationResult,
+    TopologyName,
+    fold_parameter_v,
     simulate_metastable_retry_collapse_simpy,
     solve_dual_fixed_points,
     solve_saddle_node_bifurcation,
@@ -59,6 +61,7 @@ __all__ = [
     "CascadeParams",
     "DualBranchFixedPointResult",
     "SaddleNodeBifurcationResult",
+    "TopologyName",
     "__version__",
     "apply_hysteresis_with_safety_cap",
     "cascade",
@@ -66,6 +69,7 @@ __all__ = [
     "conditional_oracle_gain",
     "conditional_oracle_gain_prime",
     "find_optimal_threshold_tau",
+    "fold_parameter_v",
     "jensen_antifragility_bound",
     "offload_pdf_f",
     "offload_pdf_prime",

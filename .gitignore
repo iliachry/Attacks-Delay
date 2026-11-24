@@ -34,3 +34,6 @@ final_corrected_plot.png
 *.toc
 *.blg
 *.bbl
+# Build outputs
+dist/
+build/

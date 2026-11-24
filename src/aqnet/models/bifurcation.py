@@ -1,20 +1,66 @@
-"""
-Saddle-Node (Fold) Retry Bifurcation & Critical Collapse Theory for Adversarial Queueing Networks.
+r"""
+Saddle-node (fold) retry bifurcation for adversarial queueing networks.
 
-Provides:
-1. Unimodal throughput-conservation manifold Gamma(Lambda^*; p, mu, T) across all 5 adversarial
-   queueing topologies (one_node_destruction, one_node_modification, tandem, feedforward, feedback),
-   with 100% mathematical parity against the corresponding solvers in `aqnet.models`.
-2. Closed-form Wright-omega / Lambert-W_0 Saddle-Node fold point Lambda_SN, critical external
-   arrival capacity lambda_crit^SN, critical attack probability p_crit^SN, and normal-form
-   quadratic curvature c_2 for Case 1 (Destruction, with structural p-invariance of lambda_crit^SN)
-   and Case 2 (Modification, with linear capacity erosion (1 - p)).
-3. Dual fixed-point branch solver (locally stable lower branch Lambda_stable^* vs. unstable upper
-   separatrix Lambda_unstable^* under the mean-field renewal-conservation closure) and universal
-   square-root critical exponent O((lambda_crit - lambda)^{-1/2}).
-4. Symbolic verification via SymPy of the core bifurcation identities.
-5. Discrete-event SimPy validation of subcritical renewal convergence, metastable burst-induced
-   separatrix crossing, and supercritical retry collapse with 20-batch Student-t 95% CIs.
+Under timeout-driven retransmission, the bottleneck attempt rate ``Lambda`` (fresh arrivals
+plus retries) must satisfy the mean-field conservation law
+
+.. math::
+
+    \Gamma(\Lambda) := \Lambda \, P_{\text{succ}}(\Lambda) = \lambda,
+
+where ``lambda`` is the external (fresh) arrival rate and ``P_succ`` is the per-attempt
+probability of surviving the attack *and* finishing before the timeout ``T``. ``Gamma`` is
+unimodal: it rises, peaks at the fold ``Lambda_SN`` and falls back to zero at the bottleneck
+capacity ``Lambda_max``. Therefore:
+
+* ``lambda < lambda_crit_SN = Gamma(Lambda_SN)``: two fixed points, a stable lower branch
+  and an unstable upper branch (the *separatrix*). A burst that pushes the retry load past
+  the separatrix runs away into a retry storm.
+* ``lambda = lambda_crit_SN``: the branches merge (saddle-node / fold).
+* ``lambda > lambda_crit_SN``: no fixed point; the queue collapses.
+
+Closed form (single node, exponential service)
+----------------------------------------------
+For Case 2 (post-service modification) ``Gamma(Lambda) = (1 - p) Lambda (1 - exp(-(mu - Lambda) T))``.
+Setting ``Gamma'(Lambda) = 0`` and substituting ``v = 1 + Lambda T`` gives
+``v exp(v) = exp(mu T + 1)``, hence
+
+.. math::
+
+    v = W_0\!\left(e^{\mu T + 1}\right) = \omega(\mu T + 1),
+
+with ``W_0`` the principal Lambert-W branch and ``omega`` the Wright-omega function. Then
+
+* ``Lambda_SN = (v - 1) / T``
+* ``lambda_crit_SN = (1 - p) (v - 1)^2 / (T v)``
+* ``Gamma''(Lambda_SN) = -(1 - p) T (1 + v) / v``  (normal-form ``c_2 = -Gamma''/2``)
+
+For Case 1 (pre-service destruction) the substitution ``x = (1 - p) Lambda`` makes the
+throughput map independent of ``p``: ``lambda_crit_SN = (v - 1)^2 / (T v)`` for every
+``p in [0, 1)``, ``Lambda_SN = (v - 1) / ((1 - p) T)`` and
+``Gamma''(Lambda_SN) = -(1 - p)^2 T (1 + v) / v``.
+
+Near the fold both branches follow the square-root normal form
+``Lambda_pm(lambda) ~ Lambda_SN pm sqrt((lambda_crit_SN - lambda) / c_2)``, so the
+sensitivity ``dLambda/dlambda`` diverges like ``(lambda_crit_SN - lambda)^(-1/2)``.
+
+Cases 3 to 5 (tandem, feedforward, feedback) have no closed form; their fold is found by
+bounded scalar optimisation of the same ``Gamma``.
+
+Public API
+----------
+fold_parameter_v
+    ``v = omega(mu T + 1) = W_0(exp(mu T + 1))`` evaluated two ways.
+success_probability_p_succ, throughput_curve_gamma, upper_attempt_rate_bound
+    The conservation map and its ingredients.
+solve_saddle_node_bifurcation -> SaddleNodeBifurcationResult
+    Fold location, critical capacity, curvature and critical attack probability.
+solve_dual_fixed_points -> DualBranchFixedPointResult
+    Stable and unstable fixed points for a given external rate.
+verify_symbolic_bifurcation_proofs
+    SymPy proofs of the identities above.
+simulate_metastable_retry_collapse_simpy
+    Discrete-event check of the Case 2 picture, including burst-triggered collapse.
 """
 
 from __future__ import annotations
@@ -201,9 +247,91 @@ def _feedforward_stage_metrics(
     return p_succ, avg_delay
 
 
+def fold_parameter_v(mu: float, T: float, method: Literal["wrightomega", "lambertw"] = "wrightomega") -> float:
+    """
+    Fold parameter ``v = 1 + Lambda_SN * T`` of the single-node retry queue.
+
+    ``v`` is the unique real solution of ``v * exp(v) = exp(mu * T + 1)``, i.e.
+
+    ``v = omega(mu * T + 1) = W_0(exp(mu * T + 1))``.
+
+    Parameters
+    ----------
+    mu : float
+        Service rate (> 0).
+    T : float
+        Retransmission timeout (> 0).
+    method : {"wrightomega", "lambertw"}
+        ``"wrightomega"`` (default) evaluates ``scipy.special.wrightomega(mu*T + 1)`` and is
+        stable for any ``mu * T``. ``"lambertw"`` evaluates ``scipy.special.lambertw`` on
+        ``exp(mu*T + 1)``; it overflows once ``mu * T`` exceeds about 708, so it is provided
+        for cross-checking, not production use.
+
+    Returns
+    -------
+    float
+        ``v > 1``. Then ``Lambda_SN = (v - 1) / T`` (Case 2) and
+        ``lambda_crit_SN = (1 - p) * (v - 1)**2 / (T * v)``.
+
+    Raises
+    ------
+    ValueError
+        If ``mu`` or ``T`` is not finite and positive, if ``method`` is unknown, or if the
+        Lambert-W path overflows.
+
+    Examples
+    --------
+    >>> round(fold_parameter_v(10.0, 1.0), 6)
+    8.822675
+    >>> abs(fold_parameter_v(10.0, 1.0) - fold_parameter_v(10.0, 1.0, "lambertw")) < 1e-12
+    True
+    """
+    if not np.isfinite(mu) or float(mu) <= 0.0:
+        raise ValueError(f"Service rate mu must be finite and positive, got {mu}.")
+    if not np.isfinite(T) or float(T) <= 0.0:
+        raise ValueError(f"Timeout threshold T must be finite and positive, got {T}.")
+    z = float(mu) * float(T) + 1.0
+    if method == "wrightomega":
+        return float(np.real(wrightomega(z)))
+    if method == "lambertw":
+        if z > 709.0:  # exp(z) would overflow float64
+            raise ValueError(f"exp(mu*T + 1) overflows for mu*T = {mu * T}; use method='wrightomega'.")
+        return float(np.real(lambertw(np.exp(z), k=0)))
+    raise ValueError(f"Unknown method {method!r}; expected 'wrightomega' or 'lambertw'.")
+
+
 @dataclass(frozen=True)
 class SaddleNodeBifurcationResult:
-    """Complete Saddle-Node (Fold) bifurcation characterization for an adversarial queue."""
+    """
+    Saddle-node (fold) characterisation of one adversarial retry queue.
+
+    Returned by :func:`solve_saddle_node_bifurcation`. All rates are in packets per unit time.
+
+    Attributes
+    ----------
+    topology, p, mu, T, N
+        Echo of the inputs (``N`` is ignored by the single-node topologies).
+    Lambda_max : float
+        Attempt rate at which the bottleneck saturates (``mu / (1 - p)`` for Case 1, else ``mu``).
+    Lambda_sn : float
+        Attempt rate at the fold, the maximiser of ``Gamma``.
+    lambda_crit_sn : float
+        Largest sustainable external arrival rate, ``Gamma(Lambda_sn)``.
+    rho_sn : float
+        Bottleneck utilisation at the fold.
+    p_succ_at_sn : float
+        Per-attempt success probability at the fold, ``lambda_crit_sn / Lambda_sn``.
+    d2Gamma_dLambda2 : float
+        ``Gamma''(Lambda_sn)`` (negative).
+    c2_normal_form : float
+        Normal-form coefficient ``c_2 = -Gamma''(Lambda_sn) / 2`` (positive).
+    naive_capacity : float
+        Capacity estimate that ignores timeouts (e.g. ``mu * (1 - p)`` for Case 2).
+    capacity_ratio_vs_naive : float
+        ``lambda_crit_sn / naive_capacity``: the fraction of naive capacity that survives retries.
+    closed_form_exact : bool
+        ``True`` for Cases 1 and 2 (Wright-omega closed form), ``False`` when found numerically.
+    """
 
     topology: str
     p: float
@@ -223,9 +351,21 @@ class SaddleNodeBifurcationResult:
 
     def p_crit_for_lambda(self, lambda_ext: float) -> float:
         """
-        Critical attack probability p_crit(lambda_ext) above which no stationary
-        fixed point exists for external arrival rate lambda_ext.
+        Critical attack probability ``p_crit(lambda_ext)`` above which no stationary
+        fixed point exists for external arrival rate ``lambda_ext``.
 
+        Parameters
+        ----------
+        lambda_ext : float
+            External (fresh) arrival rate. Must be finite; ``<= 0`` returns ``1.0``.
+
+        Returns
+        -------
+        float
+            ``p_crit`` in ``[0, 1]``. ``0.0`` means even an unattacked queue collapses.
+
+        Notes
+        -----
         - For Case 1 (Destruction), lambda_crit_sn is strictly invariant to p in [0, 1),
           so if lambda_ext <= lambda_crit_sn the queue remains solvable for any p < 1 (p_crit = 1.0),
           whereas if lambda_ext > lambda_crit_sn no p >= 0 is stable (p_crit = 0.0).
@@ -269,7 +409,37 @@ class SaddleNodeBifurcationResult:
 
 @dataclass(frozen=True)
 class DualBranchFixedPointResult:
-    """Dual fixed-point solution (stable lower branch + unstable upper separatrix)."""
+    """
+    Both fixed points of ``Gamma(Lambda) = lambda_ext``. Returned by :func:`solve_dual_fixed_points`.
+
+    Attributes
+    ----------
+    topology, lambda_ext, p, mu, T, N
+        Echo of the inputs.
+    is_stable : bool
+        ``True`` iff a stable lower fixed point exists (``lambda_ext < lambda_crit_sn``).
+    Lambda_stable : float
+        Stable lower-branch attempt rate (``nan`` when supercritical).
+    Lambda_unstable : float
+        Unstable upper-branch attempt rate, the separatrix (``nan`` when supercritical).
+    Lambda_sn, lambda_crit_sn : float
+        Fold location and critical external rate (see :class:`SaddleNodeBifurcationResult`).
+    margin_to_sn : float
+        ``lambda_crit_sn - lambda_ext``; negative when supercritical.
+    separatrix_gap : float
+        ``Lambda_unstable - Lambda_stable``: how much extra retry load a burst must add to tip
+        the queue into a retry storm.
+    sqrt_asymptotic_stable, sqrt_asymptotic_unstable : float
+        Normal-form approximations ``Lambda_sn -/+ sqrt(margin_to_sn / c_2)``.
+    delay_sensitivity_dLambda_dlambda : float
+        ``1 / Gamma'(Lambda_stable)``; diverges like ``margin_to_sn ** -0.5`` at the fold.
+    expected_total_time_stable : float
+        Expected end-to-end sojourn time on the stable branch (``inf`` when supercritical).
+    stability_regime : str
+        ``"subcritical_bistable"``, ``"critical_fold_semistable"`` or ``"supercritical_collapse"``.
+    is_critical_fold : bool
+        ``True`` exactly at the fold (within ``1e-12``).
+    """
 
     topology: str
     lambda_ext: float
@@ -292,9 +462,31 @@ class DualBranchFixedPointResult:
     is_critical_fold: bool = False
 
 
-def upper_attempt_rate_bound(topology: str, p: float, mu: float, N: int = 2) -> float:
+def upper_attempt_rate_bound(topology: TopologyName, p: float, mu: float, N: int = 2) -> float:
     """
-    Maximum admissible total attempt rate Lambda_max before bottleneck server utilization rho -> 1.
+    Attempt rate ``Lambda_max`` at which the bottleneck server saturates (``rho -> 1``).
+
+    Parameters
+    ----------
+    topology : TopologyName
+        One of ``"one_node_destruction"``, ``"one_node_modification"``, ``"tandem"``,
+        ``"feedforward"``, ``"feedback"``.
+    p : float
+        Per-hop attack probability, ``0 <= p < 1``.
+    mu : float
+        Service rate (> 0).
+    N : int
+        Number of nodes (ignored by single-node topologies).
+
+    Returns
+    -------
+    float
+        ``mu / (1 - p)`` for Case 1 (destroyed packets never reach the server), ``mu`` otherwise.
+
+    Raises
+    ------
+    ValueError
+        On an unknown topology or out-of-domain parameter.
     """
     _validate_params(topology, p, mu, 1.0, N)
     if topology == "one_node_destruction":
@@ -304,18 +496,44 @@ def upper_attempt_rate_bound(topology: str, p: float, mu: float, N: int = 2) -> 
 
 def success_probability_p_succ(
     Lambda_star: float,
-    topology: str,
+    topology: TopologyName,
     p: float,
     mu: float,
     T: float,
     N: int = 2,
 ) -> float:
     """
-    Effective external throughput yield per unit of bottleneck attempt rate Lambda_star:
-      Gamma(Lambda^*; p, mu, T) = Lambda^* * success_probability_p_succ(Lambda^*; p, mu, T).
+    Per-attempt success probability ``P_succ(Lambda_star)``, so that
+    ``Gamma(Lambda_star) = Lambda_star * P_succ(Lambda_star)``.
 
-    - Cases 1–4: per-attempt survival & timely completion probability P_succ(Lambda^*).
-    - Case 5 (Feedback Mesh): per-visit exit yield P_succ(Lambda^*) / E[V](Lambda^*) matching Eq. (373).
+    An attempt succeeds if it survives the attack and completes within the timeout ``T``.
+    For Case 5 (feedback mesh) the value returned is the per-visit exit yield
+    ``P_succ / E[V]``, so the same ``Gamma`` definition applies.
+
+    Parameters
+    ----------
+    Lambda_star : float
+        Total attempt rate at the bottleneck (fresh + retries). Negative values are clamped to 0.
+    topology : TopologyName
+        Network topology (see :func:`upper_attempt_rate_bound`).
+    p : float
+        Attack probability, ``0 <= p < 1``.
+    mu : float
+        Service rate (> 0).
+    T : float
+        Retransmission timeout (> 0).
+    N : int
+        Number of nodes for Cases 3 to 5.
+
+    Returns
+    -------
+    float
+        Probability in ``[0, 1]``; ``0.0`` once ``Lambda_star >= Lambda_max``.
+
+    Raises
+    ------
+    ValueError
+        On out-of-domain parameters or a non-finite ``Lambda_star``.
     """
     _validate_params(topology, p, mu, T, N)
     if not np.isfinite(Lambda_star):
@@ -353,19 +571,35 @@ def success_probability_p_succ(
 
 def throughput_curve_gamma(
     Lambda_star: float,
-    topology: str = "one_node_modification",
+    topology: TopologyName = "one_node_modification",
     p: float = 0.25,
     mu: float = 10.0,
     T: float = 1.0,
     N: int = 2,
 ) -> float:
     """
-    Effective external throughput conservation map:
-        Gamma(Lambda^*; p, mu, T) := Lambda^* * success_probability_p_succ(Lambda^*; p, mu, T).
+    Throughput-conservation map ``Gamma(Lambda_star) = Lambda_star * P_succ(Lambda_star)``.
 
-    Under the mean-field renewal-conservation closure, a stationary fixed point at external
-    arrival rate lambda exists if and only if Gamma(Lambda^*; p, mu, T) = lambda admits a
-    solution in (0, Lambda_max).
+    A stationary operating point at external arrival rate ``lambda`` exists iff
+    ``Gamma(Lambda_star) = lambda`` has a solution in ``(0, Lambda_max)``.
+
+    Parameters
+    ----------
+    Lambda_star, topology, p, mu, T, N
+        As in :func:`success_probability_p_succ`.
+
+    Returns
+    -------
+    float
+        Successful (goodput) rate; ``0.0`` for ``Lambda_star <= 0``, non-finite input,
+        or ``Lambda_star >= Lambda_max``.
+
+    Examples
+    --------
+    >>> sn = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    >>> abs(throughput_curve_gamma(sn.Lambda_sn, "one_node_modification", 0.25, 10.0, 1.0)
+    ...     - sn.lambda_crit_sn) < 1e-12
+    True
     """
     _validate_params(topology, p, mu, T, N)
     if not np.isfinite(Lambda_star) or Lambda_star <= 0.0:
@@ -377,20 +611,48 @@ def throughput_curve_gamma(
 
 
 def solve_saddle_node_bifurcation(
-    topology: str = "one_node_modification",
+    topology: TopologyName = "one_node_modification",
     p: float = 0.25,
     mu: float = 10.0,
     T: float = 1.0,
     N: int = 2,
 ) -> SaddleNodeBifurcationResult:
     """
-    Compute the exact Saddle-Node (Fold) retry bifurcation point (Lambda_sn, lambda_crit_sn),
-    second derivative d^2 Gamma / d(Lambda^*)^2, and quadratic normal-form coefficient c_2.
+    Locate the saddle-node fold of ``Gamma`` and return its full characterisation.
 
-    Uses the exact closed-form Wright-omega / Lambert-W_0 theorem for:
-    - 'one_node_destruction' (with effective server load x = (1 - p)*Lambda^* and p-invariant lambda_crit_sn)
-    - 'one_node_modification' (with linear capacity erosion (1 - p))
-    and high-precision root/bounded optimization for 'tandem', 'feedforward', and 'feedback'.
+    Cases 1 and 2 use the exact Wright-omega closed form (see the module docstring and
+    :func:`fold_parameter_v`). Cases 3 to 5 maximise ``Gamma`` numerically
+    (bounded Brent, ``xatol=1e-13``) and take ``Gamma''`` by central differences.
+
+    Parameters
+    ----------
+    topology : TopologyName
+        Network topology.
+    p : float
+        Attack probability, ``0 <= p < 1``.
+    mu : float
+        Service rate (> 0).
+    T : float
+        Retransmission timeout (> 0).
+    N : int
+        Number of nodes for Cases 3 to 5.
+
+    Returns
+    -------
+    SaddleNodeBifurcationResult
+
+    Raises
+    ------
+    ValueError
+        On out-of-domain parameters.
+
+    Examples
+    --------
+    >>> sn = solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+    >>> round(sn.Lambda_sn, 4), round(sn.lambda_crit_sn, 4)
+    (7.8227, 5.202)
+    >>> sn.closed_form_exact
+    True
     """
     _validate_params(topology, p, mu, T, N)
     lam_max = upper_attempt_rate_bound(topology, p, mu, N)
@@ -398,7 +660,7 @@ def solve_saddle_node_bifurcation(
     if topology == "one_node_destruction":
         # With x = (1 - p)*Lambda^*, Gamma_dest(Lambda^*) = x * (1 - exp(-(mu - x)*T)).
         # Setting dGamma_dest/dx = 0 yields the exact Wright-omega root x_sn = (omega(mu*T + 1) - 1) / T.
-        v = float(np.real(wrightomega(mu * T + 1.0)))
+        v = fold_parameter_v(mu, T)
         x_sn = (v - 1.0) / T
         lam_sn = x_sn / (1.0 - p)
         lam_crit = ((v - 1.0) ** 2) / (T * v)
@@ -425,7 +687,7 @@ def solve_saddle_node_bifurcation(
         )
 
     if topology == "one_node_modification":
-        v = float(np.real(wrightomega(mu * T + 1.0)))
+        v = fold_parameter_v(mu, T)
         lam_sn = (v - 1.0) / T
         lam_crit = (1.0 - p) * ((v - 1.0) ** 2) / (T * v)
         p_succ_sn = lam_crit / lam_sn if lam_sn > 0.0 else 0.0
@@ -544,7 +806,7 @@ def _expected_total_sojourn(
 
 def solve_dual_fixed_points(
     lambda_ext: float,
-    topology: str = "one_node_modification",
+    topology: TopologyName = "one_node_modification",
     p: float = 0.25,
     mu: float = 10.0,
     T: float = 1.0,
@@ -552,14 +814,40 @@ def solve_dual_fixed_points(
     backoff: float = 0.03,
 ) -> DualBranchFixedPointResult:
     """
-    Solve the conservation equation Gamma(Lambda^*; p, mu, T) = lambda_ext for both:
-      1. The locally asymptotically stable lower branch Lambda_stable^* in (0, Lambda_sn), and
-      2. The locally unstable upper branch (separatrix) Lambda_unstable^* in (Lambda_sn, Lambda_max).
+    Solve ``Gamma(Lambda) = lambda_ext`` for both fixed points.
 
-    Also evaluates the local normal-form square-root approximations:
-      Lambda_asymp^-(lambda) = Lambda_sn - sqrt((lambda_crit_sn - lambda) / c_2),
-      Lambda_asymp^+(lambda) = Lambda_sn + sqrt((lambda_crit_sn - lambda) / c_2),
-    and the critical sensitivity d(Lambda_stable^*)/d(lambda_ext) = 1 / Gamma'(Lambda_stable^*).
+    * Stable lower branch ``Lambda_stable`` in ``(0, Lambda_sn)``.
+    * Unstable upper branch (separatrix) ``Lambda_unstable`` in ``(Lambda_sn, Lambda_max)``.
+
+    Both roots are found by Brent's method to ``1e-14``. The result also carries the
+    normal-form approximations ``Lambda_sn -/+ sqrt((lambda_crit_sn - lambda_ext) / c_2)``
+    and the sensitivity ``dLambda_stable/dlambda_ext = 1 / Gamma'(Lambda_stable)``.
+
+    Parameters
+    ----------
+    lambda_ext : float
+        External (fresh) arrival rate, finite and ``>= 0``.
+    topology, p, mu, T, N
+        As in :func:`solve_saddle_node_bifurcation`.
+    backoff : float
+        Mean retry back-off, used only in the Case 1 sojourn-time formula.
+
+    Returns
+    -------
+    DualBranchFixedPointResult
+        ``is_stable`` is ``False`` and both branches are ``nan`` when
+        ``lambda_ext > lambda_crit_sn``.
+
+    Raises
+    ------
+    ValueError
+        On out-of-domain parameters or negative / non-finite ``lambda_ext``.
+
+    Examples
+    --------
+    >>> d = solve_dual_fixed_points(3.5, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+    >>> d.is_stable, round(d.Lambda_stable, 4), round(d.Lambda_unstable, 4)
+    (True, 4.6898, 9.3037)
     """
     _validate_params(topology, p, mu, T, N)
     if not np.isfinite(lambda_ext) or lambda_ext < 0.0:
@@ -693,7 +981,7 @@ def solve_dual_fixed_points(
 
 def verify_symbolic_bifurcation_proofs() -> dict[str, Any]:
     """
-    Symbolically prove the 4 foundational equations of the Saddle-Node Retry Bifurcation Theorem
+    Symbolically prove (SymPy, ~1 s) the 4 foundational equations of the Saddle-Node Retry Bifurcation Theorem
     using SymPy:
       1. Case 2 (Modification) first-order stationarity identity:
          dGamma_mod/dLambda = 0  <=>  (1 + Lambda*T)*exp(1 + Lambda*T) = exp(mu*T + 1).
@@ -705,6 +993,13 @@ def verify_symbolic_bifurcation_proofs() -> dict[str, Any]:
          and at p = 0 coincides identically with Gamma_mod.
       4. Quadratic Saddle-Node normal form and square-root sensitivity divergence:
          Delta_lambda = c_2 * (delta_Lambda)^2  =>  |d(delta_Lambda)/d(lambda)| = 1 / (2*sqrt(c_2*Delta_lambda)).
+
+    Returns
+    -------
+    dict
+        Boolean flags per identity (``*_verified``), ``all_symbolic_proofs_verified``, the
+        simplified curvature and effective-load expressions as strings, and
+        ``lambertw_vs_wrightomega_abs_diff`` at ``z = 11``.
     """
     Lam, p, mu, T, v, x = sp.symbols("Lambda p mu T v x", positive=True)
     c2, dlam = sp.symbols("c_2 Delta_lambda", positive=True)
@@ -777,7 +1072,42 @@ def simulate_metastable_retry_collapse_simpy(
     seed: int = 42,
 ) -> dict[str, Any]:
     """
-    Discrete-event SimPy simulation of the Case 2 (Modification) retry queue:
+    Discrete-event SimPy simulation of the Case 2 (Modification) retry queue.
+
+    Parameters
+    ----------
+    lambda_ext : float
+        External Poisson arrival rate.
+    p, mu, T : float
+        Attack probability, service rate, timeout.
+    burst_factor : float
+        Multiplier on ``lambda_ext`` during the burst.
+    burst_duration : float
+        Burst length, starting at the end of warm-up (``0.2 * sim_time``). Ignored when
+        ``burst_window`` is given.
+    burst_window : tuple of float, optional
+        Explicit ``(start, end)`` burst interval.
+    retry_delay_mean : float
+        Mean of the exponential back-off before each retry.
+    max_inflight_cap : int
+        In-flight population that counts as collapse; packets beyond it are dropped.
+    sim_time : float
+        Simulated horizon. The first 20 % is warm-up.
+    n_batches : int
+        Batches for the Student-t 95 % confidence interval.
+    seed : int
+        NumPy RNG seed.
+
+    Returns
+    -------
+    dict
+        Theory values (``lambda_crit_sn``, ``Lambda_sn``, ``Lambda_stable_theory``, ...),
+        simulation estimates (``sim_attempt_rate_mean``, ``sim_attempt_rate_ci95``,
+        ``sim_mean_total_delay``, ``peak_inflight``), ``collapse_triggered``, relative errors
+        and Little's-law diagnostics.
+
+    Notes
+    -----
       - In the deep subcritical regime (lambda_ext << lambda_crit_sn) with no separatrix-crossing burst,
         the queue fluctuates around the mean-field lower fixed point Lambda_stable^*.
       - Because the lower branch is only metastable in a finite-backoff stochastic queue, either a

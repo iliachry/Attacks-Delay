@@ -1,9 +1,9 @@
 # aqnet — Adversarial Queue Networks
 
-[![PyPI - Version](https://img.shields.io/badge/pypi-v0.2.0-blue.svg)](https://pypi.org/project/aqnet/)
+[![PyPI - Version](https://img.shields.io/pypi/v/aqnet.svg)](https://pypi.org/project/aqnet/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-cs.NI%2Fmath.PR-b31b1b.svg)](https://arxiv.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](./pyproject.toml)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![CI](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml/badge.svg)](https://github.com/iliachry/Attacks-Delay/actions/workflows/ci.yml)
 
 > **Mathematical Modeling and Performance Analysis of Multi-Node Queueing Networks Under Adversarial Attacks and Timeout-Driven Retransmissions**  
@@ -59,12 +59,45 @@ print(f"Simulated Sojourn Time: {sim_delay:.4f} s")
 tandem_delay = aqnet.solve_tandem_theory(p=0.1, N=3, mu=2.0, lambda_arrival=0.15, W=8.0)
 print(f"Tandem (N=3) Delay: {tandem_delay:.4f} s")
 
-# 4. Closed-form Wright-omega / Lambert-W_0 Saddle-Node retry bifurcation (aqnet v0.2.0)
-sn = aqnet.solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
-dual = aqnet.solve_dual_fixed_points(3.5, "one_node_modification", p=0.25, mu=10.0, T=1.0)
-print(f"Saddle-Node Fold: Lambda_SN*={sn.Lambda_sn:.4f}, lambda_crit^SN={sn.lambda_crit_sn:.4f}")
-print(f"Dual Branches: stable={dual.Lambda_stable:.4f}, unstable_separatrix={dual.Lambda_unstable:.4f}")
 ```
+
+### Saddle-node retry bifurcation
+
+Timeout-driven retries make a queue *bistable*: below a critical arrival rate there is a
+stable operating point and an unstable one above it (the separatrix). A burst that pushes
+the retry load past the separatrix triggers a retry storm. For single-node queues the fold
+has an exact closed form through the Wright-omega / Lambert-W₀ function,
+`v = ω(μT + 1) = W₀(e^(μT+1))`, `Λ_SN = (v − 1)/T`, `λ_crit = (1 − p)(v − 1)²/(T v)`.
+
+```python
+import aqnet
+
+# Fold parameter: Wright-omega and Lambert-W0 agree
+v = aqnet.fold_parameter_v(mu=10.0, T=1.0)
+assert abs(v - aqnet.fold_parameter_v(10.0, 1.0, method="lambertw")) < 1e-12
+
+# Where does the queue fold?
+sn = aqnet.solve_saddle_node_bifurcation("one_node_modification", p=0.25, mu=10.0, T=1.0)
+print(sn.Lambda_sn, sn.lambda_crit_sn)   # 7.8227 5.2020  (attempt rate, max fresh rate)
+print(sn.p_crit_for_lambda(3.5))         # attack probability that would collapse lambda=3.5
+
+# Both fixed points at a given load
+dual = aqnet.solve_dual_fixed_points(3.5, "one_node_modification", p=0.25, mu=10.0, T=1.0)
+print(dual.Lambda_stable, dual.Lambda_unstable, dual.separatrix_gap)  # 4.6898 9.3037 4.6138
+```
+
+The same calls accept `"one_node_destruction"`, `"tandem"`, `"feedforward"` and
+`"feedback"` (multi-node folds are found numerically).
+
+### Documentation & notebooks
+
+- [API reference](https://github.com/iliachry/Attacks-Delay/blob/main/docs/api.md): every public function, the closed forms, and result fields.
+- [`notebooks/`](https://github.com/iliachry/Attacks-Delay/tree/main/notebooks): executed Jupyter notebooks.
+  - `01_basic_network.ipynb`: delay solvers vs SimPy for all five topologies.
+  - `02_attack_timeout_retry_storm.ipynb`: how attacks and timeouts trigger a retry storm, and a burst that crosses the separatrix.
+  - `03_saddle_node_bifurcation.ipynb`: the fold, both branches, the square-root law, and the critical-capacity map.
+
+To re-run them: `uv run --extra notebooks jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb`.
 
 ### Command Line Interface (CLI)
 
@@ -132,6 +165,11 @@ Attacks-Delay/
 │   ├── n_node_with_feedback.py
 │   ├── results_feedback.json
 │   └── section_3_3_1_sojourn_vs_N_varying_p.png
+├── src/aqnet/                     # Python package (models/, simulation/, cli.py)
+├── tests/                         # pytest suite
+├── docs/api.md                    # API reference
+├── notebooks/                     # Executed tutorial notebooks (01-03)
+├── CHANGELOG.md                   # Release notes
 ├── arxiv_package/                 # Standalone arXiv submission bundle (main.tex + figures)
 ├── letter/                        # Cover letters and editorial correspondence
 │   ├── cover_letter.tex
@@ -250,4 +288,4 @@ If you find this codebase or theoretical framework helpful in your research, ple
 
 ## License
 
-This project is licensed under the MIT License - see [`pyproject.toml`](./pyproject.toml) for details.
+This project is licensed under the MIT License - see [`LICENSE`](./LICENSE).
